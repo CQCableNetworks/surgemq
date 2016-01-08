@@ -22,8 +22,8 @@ import (
 
 	"github.com/surge/glog"
 	"github.com/surgemq/message"
-	"github.com/surgemq/surgemq/sessions"
-	"github.com/surgemq/surgemq/topics"
+	"github.com/nagae-memooff/surgemq/sessions"
+	"github.com/nagae-memooff/surgemq/topics"
 )
 
 type (
@@ -156,7 +156,7 @@ func (this *service) start() error {
 			return err
 		} else {
 			for i, t := range topics {
-				this.topicsMgr.Subscribe([]byte(t), qoss[i], &this.onpub)
+				this.topicsMgr.Subscribe([]byte(t), qoss[i], &this.onpub, this.sess.ID())
 			}
 		}
 	}
@@ -343,7 +343,7 @@ func (this *service) subscribe(msg *message.SubscribeMessage, onComplete OnCompl
 				err2 = fmt.Errorf("Failed to subscribe to '%s'\n%v", string(t), err2)
 			} else {
 				this.sess.AddTopic(string(t), c)
-				_, err := this.topicsMgr.Subscribe(t, c, &onPublish)
+				_, err := this.topicsMgr.Subscribe(t, c, &onPublish, this.sess.ID())
 				if err != nil {
 					err2 = fmt.Errorf("Failed to subscribe to '%s' (%v)\n%v", string(t), err, err2)
 				}

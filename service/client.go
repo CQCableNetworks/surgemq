@@ -22,8 +22,8 @@ import (
 	"time"
 
 	"github.com/surgemq/message"
-	"github.com/surgemq/surgemq/sessions"
-	"github.com/surgemq/surgemq/topics"
+	"github.com/nagae-memooff/surgemq/sessions"
+	"github.com/nagae-memooff/surgemq/topics"
 )
 
 const (

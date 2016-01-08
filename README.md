@@ -1,9 +1,9 @@
 SurgeMQ
 =======
 
-[![GoDoc](http://godoc.org/github.com/surgemq/surgemq?status.svg)](http://godoc.org/github.com/surgemq/surgemq)
+[![GoDoc](http://godoc.org/github.com/nagae-memooff/surgemq?status.svg)](http://godoc.org/github.com/nagae-memooff/surgemq)
 
-SurgeMQ is a high performance MQTT broker and client library that aims to be fully compliant with MQTT 3.1 and 3.1.1 specs. The primary package that's of interest is package [service](http://godoc.org/github.com/surgemq/surgemq/service). It provides the MQTT Server and Client services in a library form.
+SurgeMQ is a high performance MQTT broker and client library that aims to be fully compliant with MQTT 3.1 and 3.1.1 specs. The primary package that's of interest is package [service](http://godoc.org/github.com/nagae-memooff/surgemq/service). It provides the MQTT Server and Client services in a library form.
 
 SurgeMQ development is currently **on hold**, unfortunately, due to my focus on [Sequence](http://github.com/trustpath/sequence). If you would like to contribute and become a collaborator, please let me know. There's quite a bit of interest for the project, and I would love to see it succeed. 
 
@@ -80,7 +80,7 @@ In addition, SurgeMQ has been tested with the following client libraries and it 
 
 ### Documentation
 
-Documentation is available at [godoc](http://godoc.org/github.com/surgemq/surgemq).
+Documentation is available at [godoc](http://godoc.org/github.com/nagae-memooff/surgemq).
 
 More information regarding the design of the SurgeMQ is available at [zen 3.1](http://surgemq.com).
 
@@ -109,7 +109,7 @@ limitations under the License.
 
 Then multiple clients can subscribe to results based on their different needs. For example, a client maybe only interested in any failed ping attempts, as that would indicate a host might be down. After a certain number of failures the client may then raise some type of flag to indicate host down.
 
-`pingmq` is available [here](https://github.com/surgemq/surgemq/tree/master/cmd/pingmq) and documentation is available at [godoc](http://godoc.org/github.com/surgemq/surgemq/cmd/pingmq). It utilizes [surge/ping](https://github.com/surge/ping) to perform the pings.
+`pingmq` is available [here](https://github.com/nagae-memooff/surgemq/tree/master/cmd/pingmq) and documentation is available at [godoc](http://godoc.org/github.com/nagae-memooff/surgemq/cmd/pingmq). It utilizes [surge/ping](https://github.com/surge/ping) to perform the pings.
 
 #### Server Example
 

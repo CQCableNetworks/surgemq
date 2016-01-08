@@ -22,7 +22,7 @@ import (
 
 	"github.com/surge/glog"
 	"github.com/surgemq/message"
-	"github.com/surgemq/surgemq/sessions"
+	"github.com/nagae-memooff/surgemq/sessions"
 )
 
 var (
@@ -311,9 +311,12 @@ func (this *service) processSubscribe(msg *message.SubscribeMessage) error {
 
 	this.rmsgs = this.rmsgs[0:0]
 
+	//   fmt.Printf("this.id: %d,  this.sess.ID(): %s\n", this.id, this.cid())
 	for i, t := range topics {
-		rqos, err := this.topicsMgr.Subscribe(t, qos[i], &this.onpub)
+		rqos, err := this.topicsMgr.Subscribe(t, qos[i], &this.onpub, this.sess.ID())
+		//     rqos, err := this.topicsMgr.Subscribe(t, qos[i], &this)
 		if err != nil {
+			this.conn.Close()
 			return err
 		}
 		this.sess.AddTopic(string(t), qos[i])
