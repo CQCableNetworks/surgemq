@@ -15,14 +15,20 @@
 package service
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"reflect"
+	"strings"
 
+	//   "runtime/debug"
+	"github.com/nagae-memooff/config"
+	"github.com/nagae-memooff/surgemq/sessions"
+	"github.com/nagae-memooff/surgemq/topics"
 	"github.com/surge/glog"
 	"github.com/surgemq/message"
-	"github.com/nagae-memooff/surgemq/sessions"
 )
 
 var (
@@ -279,6 +285,8 @@ func (this *service) processPublish(msg *message.PublishMessage) error {
 		resp.SetPacketId(msg.PacketId())
 
 		_, err := this.writeMessage(resp)
+
+		err = this._process_publish(msg)
 		return err
 
 	case message.QosAtLeastOnce:
@@ -289,10 +297,15 @@ func (this *service) processPublish(msg *message.PublishMessage) error {
 			return err
 		}
 
-		return this.onPublish(msg)
-
+		err := this._process_publish(msg)
+		return err
 	case message.QosAtMostOnce:
-		return this.onPublish(msg)
+		//     fmt.Printf("process.go:295: topic: %s\n", msg.Topic())
+		//     fmt.Printf("process.go:297: payload: %s\n", msg.Payload())
+		err := this._process_publish(msg)
+		return err
+	default:
+		fmt.Printf("default: %d\n", msg.QoS())
 	}
 
 	return fmt.Errorf("(%s) invalid message QoS %d.", this.cid(), msg.QoS())
@@ -382,6 +395,7 @@ func (this *service) onPublish(msg *message.PublishMessage) error {
 	msg.SetRetain(false)
 
 	//glog.Debugf("(%s) Publishing to topic %q and %d subscribers", this.cid(), string(msg.Topic()), len(this.subs))
+	//   fmt.Printf("value: %v\n", config.GetModel())
 	for _, s := range this.subs {
 		if s != nil {
 			fn, ok := s.(*OnPublishFunc)
@@ -395,4 +409,102 @@ func (this *service) onPublish(msg *message.PublishMessage) error {
 	}
 
 	return nil
+}
+
+type BroadCastMessage struct {
+	Clients []string `json:"clients"`
+	Payload string   `json:"payload"`
+}
+type BadgeMessage struct {
+	Data int    `json:data`
+	Type string `json:type`
+}
+
+func (this *service) onReceiveBadge(msg *message.PublishMessage) (err error) {
+	var badge_message BadgeMessage
+
+	datas := strings.Split(fmt.Sprintf("%s", msg.Payload()), ":")
+	if len(datas) != 2 {
+		return errors.New(fmt.Sprintf("invalid message payload: %s", msg.Payload()))
+	}
+
+	account_id := datas[0]
+	payload_base64 := datas[1]
+
+	if payload_base64 == "" {
+		return errors.New(fmt.Sprintf("blank base64 payload, abort. %s", msg.Payload()))
+	}
+
+	payload_bytes, err := base64.StdEncoding.DecodeString(payload_base64)
+	if err != nil {
+		glog.Infof("can't decode payload: %s\n", payload_base64)
+	}
+
+	err = json.Unmarshal([]byte(payload_bytes), &badge_message)
+	if err != nil {
+		glog.Infof("can't parse message json: account_id: %s, payload: %s\n", account_id, payload_bytes)
+		return
+	}
+	//   glog.Infof("badge: %v, type: %T\n", badge_message.Data, badge_message.Data)
+	go func() {
+		key := fmt.Sprintf("badge_account:%s", account_id)
+		_, err = topics.RedisDo("set", key, badge_message.Data)
+		if err != nil {
+			glog.Infof("can't set badge! account_id: %s, badge: %v\n", account_id, badge_message)
+		}
+	}()
+
+	return
+}
+
+func (this *service) onGroupPublish(msg *message.PublishMessage) (err error) {
+	var (
+		broadcast_msg BroadCastMessage
+		payload       []byte
+	)
+	//   glog.Infof("in: %v", msg.Payload())
+
+	err = json.Unmarshal([]byte(fmt.Sprintf("%s", msg.Payload())), &broadcast_msg)
+	if err != nil {
+		glog.Infof("can't parse message json: %s\n", msg.Payload())
+		//     glog.Infof("can't parse message json: %s\n", in.Payload)
+		return
+	}
+
+	payload, err = base64.StdEncoding.DecodeString(string(broadcast_msg.Payload))
+	if err != nil {
+		glog.Infof("can't decode payload: %s\n", broadcast_msg.Payload)
+	}
+
+	for _, client_id := range broadcast_msg.Clients {
+		topic := topics.GetUserTopic(client_id)
+		if topic == "" {
+			continue
+		}
+
+		//     debug.PrintStack()
+		new_msg := message.NewPublishMessage()
+		new_msg.SetTopic([]byte(topic))
+		new_msg.SetPayload(payload)
+		this.onPublish(new_msg)
+	}
+
+	return
+}
+
+func (this *service) _process_publish(msg *message.PublishMessage) (err error) {
+	switch string(msg.Topic()) {
+	case config.Get("broadcast_channel"):
+		go func() {
+			this.onGroupPublish(msg)
+		}()
+		return nil
+	case config.Get("s_channel"):
+		go func() {
+			this.onReceiveBadge(msg)
+		}()
+		return nil
+	default:
+		return this.onPublish(msg)
+	}
 }
