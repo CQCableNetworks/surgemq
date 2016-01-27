@@ -27,7 +27,7 @@ var (
 )
 
 const (
-	defaultBufferSize     = 1024 * 256
+	defaultBufferSize     = 1024 * 64
 	defaultReadBlockSize  = 8192
 	defaultWriteBlockSize = 8192
 )

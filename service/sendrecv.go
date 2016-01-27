@@ -73,6 +73,8 @@ func (this *service) receiver() {
 
 			if err != nil {
 				if err != io.EOF {
+					//TODO: 连接断了，是不是该加入队列，等重连再发
+					//           glog.Errorf("this.subs is: %v,  count is %d", this.subs, len(this.subs))
 					glog.Errorf("(%s) error reading from connection: %v", this.cid(), err)
 				}
 				return

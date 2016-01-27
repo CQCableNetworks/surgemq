@@ -605,3 +605,25 @@ func GetUserTopic(client_id string) (topic string) {
 	Channelcache[client_id] = topic
 	return
 }
+
+func LoadChannelCache() {
+	client_ids, channel_keys, err := GetClientIDandChannels()
+	if err != nil {
+		glog.Errorln(err)
+		return
+	}
+
+	channels, err := RedisDoGetMulti("mget", channel_keys...)
+	if err != nil {
+		glog.Errorln(err)
+		return
+	}
+
+	if len(channels) != len(channel_keys) {
+		glog.Errorln("长度不一致，不缓存了！")
+	} else {
+		for i := 0; i < len(channels); i++ {
+			Channelcache[client_ids[i]] = fmt.Sprintf("/u/%s", channels[i])
+		}
+	}
+}

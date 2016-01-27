@@ -20,8 +20,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand"
 	"reflect"
 	"strings"
+	"time"
 
 	//   "runtime/debug"
 	"github.com/nagae-memooff/config"
@@ -32,7 +34,8 @@ import (
 )
 
 var (
-	errDisconnect = errors.New("Disconnect")
+	errDisconnect          = errors.New("Disconnect")
+	publish_timeout_second time.Duration
 )
 
 // processor() reads messages from the incoming buffer and processes them
@@ -49,7 +52,9 @@ func (this *service) processor() {
 		//glog.Debugf("(%s) Stopping processor", this.cid())
 	}()
 
+	publish_timeout_second = time.Duration(config.GetInt("publish_timeout_second"))
 	glog.Debugf("(%s) Starting processor", this.cid())
+	//   glog.Errorf("PendingQueue: %v", PendingQueue[0:10])
 
 	this.wgStarted.Done()
 
@@ -76,7 +81,7 @@ func (this *service) processor() {
 		this.inStat.increment(int64(n))
 
 		// 5. Process the read message
-		err = this.processIncoming(msg)
+		err = this.processIncoming(&msg)
 		if err != nil {
 			if err != errDisconnect {
 				glog.Errorf("(%s) Error processing %s: %v", this.cid(), msg.Name(), err)
@@ -105,19 +110,26 @@ func (this *service) processor() {
 	}
 }
 
-func (this *service) processIncoming(msg message.Message) error {
+func (this *service) processIncoming(msg *message.Message) error {
 	var err error = nil
+	//   glog.Errorf("this.subs is: %v,  count is %d, msg_type is %T", this.subs, len(this.subs), msg)
 
-	switch msg := msg.(type) {
+	switch msg := (*msg).(type) {
 	case *message.PublishMessage:
 		// For PUBLISH message, we should figure out what QoS it is and process accordingly
 		// If QoS == 0, we should just take the next step, no ack required
 		// If QoS == 1, we should send back PUBACK, then take the next step
 		// If QoS == 2, we need to put it in the ack queue, send back PUBREC
+		(*msg).SetPacketId(getRandPkgId())
+		//     glog.Errorf("\n%T:%d==========\nmsg is %v\n=====================", *msg, msg.PacketId(), *msg)
 		err = this.processPublish(msg)
 
 	case *message.PubackMessage:
+		//     glog.Errorf("this.subs is: %v,  count is %d, msg_type is %T", this.subs, len(this.subs), msg)
 		// For PUBACK message, it means QoS 1, we should send to ack queue
+		//     glog.Errorf("\n%T:%d==========\nmsg is %v\n=====================", *msg, msg.PacketId(), *msg)
+		pkg_id := msg.PacketId()
+		PendingQueue[pkg_id] = nil
 		this.sess.Pub1ack.Ack(msg)
 		this.processAcked(this.sess.Pub1ack)
 
@@ -300,8 +312,6 @@ func (this *service) processPublish(msg *message.PublishMessage) error {
 		err := this._process_publish(msg)
 		return err
 	case message.QosAtMostOnce:
-		//     fmt.Printf("process.go:295: topic: %s\n", msg.Topic())
-		//     fmt.Printf("process.go:297: payload: %s\n", msg.Payload())
 		err := this._process_publish(msg)
 		return err
 	default:
@@ -356,6 +366,11 @@ func (this *service) processSubscribe(msg *message.SubscribeMessage) error {
 			return err
 		}
 	}
+	go func() {
+		for _, t := range topics {
+			this._process_offline_message(string(t))
+		}
+	}()
 
 	return nil
 }
@@ -379,14 +394,14 @@ func (this *service) processUnsubscribe(msg *message.UnsubscribeMessage) error {
 // onPublish() is called when the server receives a PUBLISH message AND have completed
 // the ack cycle. This method will get the list of subscribers based on the publish
 // topic, and publishes the message to the list of subscribers.
-func (this *service) onPublish(msg *message.PublishMessage) error {
+func (this *service) onPublish(msg *message.PublishMessage) (err error) {
 	if msg.Retain() {
-		if err := this.topicsMgr.Retain(msg); err != nil {
+		if err = this.topicsMgr.Retain(msg); err != nil {
 			glog.Errorf("(%s) Error retaining message: %v", this.cid(), err)
 		}
 	}
 
-	err := this.topicsMgr.Subscribers(msg.Topic(), msg.QoS(), &this.subs, &this.qoss)
+	err = this.topicsMgr.Subscribers(msg.Topic(), msg.QoS(), &this.subs, &this.qoss)
 	if err != nil {
 		glog.Errorf("(%s) Error retrieving subscribers list: %v", this.cid(), err)
 		return err
@@ -396,6 +411,16 @@ func (this *service) onPublish(msg *message.PublishMessage) error {
 
 	//glog.Debugf("(%s) Publishing to topic %q and %d subscribers", this.cid(), string(msg.Topic()), len(this.subs))
 	//   fmt.Printf("value: %v\n", config.GetModel())
+	pkt_id := msg.PacketId()
+	PendingQueue[pkt_id] = msg
+	go func() {
+		time.Sleep(publish_timeout_second * time.Second)
+		if PendingQueue[pkt_id] != nil {
+			PendingQueue[pkt_id] = nil
+			OfflineTopicQueueProcessor <- msg
+		}
+	}()
+
 	for _, s := range this.subs {
 		if s != nil {
 			fn, ok := s.(*OnPublishFunc)
@@ -403,12 +428,13 @@ func (this *service) onPublish(msg *message.PublishMessage) error {
 				glog.Errorf("Invalid onPublish Function")
 				return fmt.Errorf("Invalid onPublish Function")
 			} else {
-				(*fn)(msg)
+				err = (*fn)(msg)
+				//         glog.Errorf("OfflineTopicQueue[%s]: %v, len is: %d\n", msg.Topic(), OfflineTopicQueue[string(msg.Topic())], len(OfflineTopicQueue[string(msg.Topic())]))
 			}
 		}
 	}
 
-	return nil
+	return err
 }
 
 type BroadCastMessage struct {
@@ -485,7 +511,9 @@ func (this *service) onGroupPublish(msg *message.PublishMessage) (err error) {
 		//     debug.PrintStack()
 		new_msg := message.NewPublishMessage()
 		new_msg.SetTopic([]byte(topic))
+		new_msg.SetPacketId(getRandPkgId())
 		new_msg.SetPayload(payload)
+		new_msg.SetQoS(message.QosAtLeastOnce)
 		this.onPublish(new_msg)
 	}
 
@@ -498,13 +526,34 @@ func (this *service) _process_publish(msg *message.PublishMessage) (err error) {
 		go func() {
 			this.onGroupPublish(msg)
 		}()
-		return nil
+		err = nil
 	case config.Get("s_channel"):
 		go func() {
 			this.onReceiveBadge(msg)
 		}()
-		return nil
+		err = nil
 	default:
-		return this.onPublish(msg)
+		err = this.onPublish(msg)
 	}
+	//如果有err，把此条消息加入以topic划分的队列
+	//订阅话题的时候，先去topic对应的队列里筛查，如果有残留，先推
+	return
+}
+
+func (this *service) _process_offline_message(topic string) (err error) {
+	offline_msgs := OfflineTopicQueue[topic]
+	for _, payload := range offline_msgs {
+		msg := message.NewPublishMessage()
+		msg.SetTopic([]byte(topic))
+		msg.SetPacketId(getRandPkgId())
+		msg.SetPayload(payload)
+		msg.SetQoS(message.QosAtLeastOnce)
+		this.onPublish(msg)
+	}
+	OfflineTopicQueue[topic] = [][]byte{}
+	return nil
+}
+
+func getRandPkgId() uint16 {
+	return uint16(rand.Intn(65000))
 }

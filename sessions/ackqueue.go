@@ -175,6 +175,10 @@ func (this *Ackqueue) Ack(msg message.Message) error {
 }
 
 // Acked() returns the list of messages that have completed the ack cycle.
+func (this *Ackqueue) Ring() []ackmsg {
+	return this.ring
+}
+
 func (this *Ackqueue) Acked() []ackmsg {
 	this.mu.Lock()
 	defer this.mu.Unlock()

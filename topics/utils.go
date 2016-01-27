@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/garyburd/redigo/redis"
 	"github.com/nagae-memooff/config"
+	"strings"
 )
 
 func newRedisPool() *redis.Pool {
@@ -51,4 +52,66 @@ func RedisDo(cmd string, args ...interface{}) (data string, err error) {
 	}
 
 	return (string)(data_byte), nil
+}
+
+func GetClientIDandChannels() (client_ids []string, channels []interface{}, err error) {
+	c := RedisPool.Get()
+	defer func() {
+		c.Close()
+	}()
+
+	data_origin, err := c.Do("keys", "channel:*")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	data_ary, ok := data_origin.([]interface{})
+	if !ok {
+		return
+	}
+
+	for _, v := range data_ary {
+		value, ok := v.([]uint8)
+		if ok {
+			channel := string(value)
+			channels = append(channels, channel)
+
+			client_id := strings.Split(channel, ":")[1]
+			client_ids = append(client_ids, client_id)
+		} else {
+			fmt.Printf("invalid client_id: type:%T, value: %v\n", v, v)
+		}
+	}
+	return
+}
+
+func RedisDoGetMulti(cmd string, args ...interface{}) (data []string, err error) {
+	c := RedisPool.Get()
+	defer func() {
+		c.Close()
+	}()
+
+	//   data_origin, err := c.Do("keys", "channel:*")
+	data_origin, err := c.Do(cmd, args...)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	data_ary, ok := data_origin.([]interface{})
+	if !ok {
+		return
+	}
+
+	for _, v := range data_ary {
+		value, ok := v.([]uint8)
+		if ok {
+			data = append(data, string(value))
+		} else {
+			fmt.Printf("invalid data: type:%T, value: %v\n", v, v)
+			//       data = append(data, "")
+		}
+	}
+	return
 }

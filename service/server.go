@@ -180,18 +180,18 @@ func (this *Server) ListenAndServe(uri string) error {
 // immediately after the message is sent to the outgoing buffer. For QOS 1 messages,
 // onComplete is called when PUBACK is received. For QOS 2 messages, onComplete is
 // called after the PUBCOMP message is received.
-func (this *Server) Publish(msg *message.PublishMessage, onComplete OnCompleteFunc) error {
-	if err := this.checkConfiguration(); err != nil {
+func (this *Server) Publish(msg *message.PublishMessage, onComplete OnCompleteFunc) (err error) {
+	if err = this.checkConfiguration(); err != nil {
 		return err
 	}
 
 	if msg.Retain() {
-		if err := this.topicsMgr.Retain(msg); err != nil {
+		if err = this.topicsMgr.Retain(msg); err != nil {
 			glog.Errorf("Error retaining message: %v", err)
 		}
 	}
 
-	if err := this.topicsMgr.Subscribers(msg.Topic(), msg.QoS(), &this.subs, &this.qoss); err != nil {
+	if err = this.topicsMgr.Subscribers(msg.Topic(), msg.QoS(), &this.subs, &this.qoss); err != nil {
 		return err
 	}
 
@@ -204,12 +204,12 @@ func (this *Server) Publish(msg *message.PublishMessage, onComplete OnCompleteFu
 			if !ok {
 				glog.Errorf("Invalid onPublish Function")
 			} else {
-				(*fn)(msg)
+				err = (*fn)(msg)
 			}
 		}
 	}
 
-	return nil
+	return err
 }
 
 // Close terminates the server by shutting down all the client connections and closing
