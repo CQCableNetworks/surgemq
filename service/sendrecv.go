@@ -70,11 +70,12 @@ func (this *service) receiver() {
 
 		for {
 			_, err := this.in.ReadFrom(r)
+			//       glog.Errorf("this.sess is: %v", this.sess)
+			//       glog.Errorf("this.sessMgr is: %v", this.sessMgr)
 
 			if err != nil {
 				if err != io.EOF {
 					//TODO: 连接断了，是不是该加入队列，等重连再发
-					//           glog.Errorf("this.subs is: %v,  count is %d", this.subs, len(this.subs))
 					glog.Errorf("(%s) error reading from connection: %v", this.cid(), err)
 				}
 				return

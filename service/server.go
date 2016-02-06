@@ -240,6 +240,7 @@ func (this *Server) Close() error {
 }
 
 // HandleConnection is for the broker to handle an incoming connection from a client
+// TODO: 如果client_id冲突，则踢掉旧的连接
 func (this *Server) handleConnection(c io.Closer) (svc *service, err error) {
 	if c == nil {
 		return nil, ErrInvalidConnectionType
@@ -314,6 +315,9 @@ func (this *Server) handleConnection(c io.Closer) (svc *service, err error) {
 		sessMgr:   this.sessMgr,
 		topicsMgr: this.topicsMgr,
 	}
+
+	c_hash := ClientHash{Name: string(req.ClientId()), Conn: &conn}
+	ClientMapProcessor <- c_hash
 
 	err = this.getSession(svc, req, resp)
 	if err != nil {
@@ -426,6 +430,8 @@ func (this *Server) getSession(svc *service, req *message.ConnectMessage, resp *
 			}
 		}
 	}
+
+	//   this.sessMgr.Del(cid)
 
 	// If CleanSession, or no existing session found, then create a new one
 	if svc.sess == nil {
