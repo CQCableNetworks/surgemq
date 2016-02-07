@@ -463,12 +463,12 @@ func (this *service) onReceiveBadge(msg *message.PublishMessage) (err error) {
 
 	payload_bytes, err := base64.StdEncoding.DecodeString(payload_base64)
 	if err != nil {
-		glog.Infof("can't decode payload: %s\n", payload_base64)
+		glog.Errorf("can't decode payload: %s\n", payload_base64)
 	}
 
 	err = json.Unmarshal([]byte(payload_bytes), &badge_message)
 	if err != nil {
-		glog.Infof("can't parse message json: account_id: %s, payload: %s\n", account_id, payload_bytes)
+		glog.Errorf("can't parse message json: account_id: %s, payload: %s\n", account_id, payload_bytes)
 		return
 	}
 	//   glog.Infof("badge: %v, type: %T\n", badge_message.Data, badge_message.Data)
@@ -476,7 +476,7 @@ func (this *service) onReceiveBadge(msg *message.PublishMessage) (err error) {
 		key := fmt.Sprintf("badge_account:%s", account_id)
 		_, err = topics.RedisDo("set", key, badge_message.Data)
 		if err != nil {
-			glog.Infof("can't set badge! account_id: %s, badge: %v\n", account_id, badge_message)
+			glog.Errorf("can't set badge! account_id: %s, badge: %v\n", account_id, badge_message)
 		}
 	}()
 
@@ -488,18 +488,17 @@ func (this *service) onGroupPublish(msg *message.PublishMessage) (err error) {
 		broadcast_msg BroadCastMessage
 		payload       []byte
 	)
-	//   glog.Infof("in: %v", msg.Payload())
 
 	err = json.Unmarshal([]byte(fmt.Sprintf("%s", msg.Payload())), &broadcast_msg)
 	if err != nil {
-		glog.Infof("can't parse message json: %s\n", msg.Payload())
-		//     glog.Infof("can't parse message json: %s\n", in.Payload)
+		glog.Errorf("can't parse message json: %s\n", msg.Payload())
 		return
 	}
 
 	payload, err = base64.StdEncoding.DecodeString(string(broadcast_msg.Payload))
 	if err != nil {
-		glog.Infof("can't decode payload: %s\n", broadcast_msg.Payload)
+		glog.Errorf("can't decode payload: %s\n", broadcast_msg.Payload)
+		return
 	}
 
 	for _, client_id := range broadcast_msg.Clients {
