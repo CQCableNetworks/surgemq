@@ -129,13 +129,13 @@ func (this *service) start() error {
 
 	//   debug.PrintStack()
 	// Create the incoming ring buffer
-	this.in, err = newBuffer(defaultBufferSize)
+	this.in, err = newBuffer(DefaultBufferSize)
 	if err != nil {
 		return err
 	}
 
 	// Create the outgoing ring buffer
-	this.out, err = newBuffer(defaultBufferSize)
+	this.out, err = newBuffer(DefaultBufferSize)
 	if err != nil {
 		return err
 	}

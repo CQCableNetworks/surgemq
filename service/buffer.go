@@ -24,10 +24,10 @@ import (
 
 var (
 	bufcnt int64
+	DefaultBufferSize     int64
 )
 
 const (
-	defaultBufferSize     = 1024 * 64
 	defaultReadBlockSize  = 8192
 	defaultWriteBlockSize = 8192
 )
@@ -82,7 +82,7 @@ func newBuffer(size int64) (*buffer, error) {
 	}
 
 	if size == 0 {
-		size = defaultBufferSize
+		size = DefaultBufferSize
 	}
 
 	if !powerOfTwo64(size) {
