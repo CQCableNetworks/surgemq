@@ -69,7 +69,7 @@ func (this *mxTopics) Subscribe(topic []byte, qos byte, sub interface{}, client_
 		//     Log.Printf("invalid qos: %d\n", qos)
 		qos = MXMaxQosAllowed
 	}
-	//   Log.Printf("topic: %s, qos: %d,  client_id: %s\n", topic, qos, client_id)
+	glog.Errorf("topic: %s, qos: %d,  client_id: %s\n", topic, qos, client_id)
 
 	if err := this.sroot.sinsert(topic, qos, sub); err != nil {
 		return message.QosFailure, err

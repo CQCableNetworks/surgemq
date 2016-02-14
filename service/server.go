@@ -15,6 +15,7 @@
 package service
 
 import (
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -127,17 +128,33 @@ func (this *Server) ListenAndServe(uri string) error {
 
 	this.quit = make(chan struct{})
 
+	//     _, err := url.Parse(uri)
 	u, err := url.Parse(uri)
 	if err != nil {
 		return err
 	}
 
-	this.ln, err = net.Listen(u.Scheme, u.Host)
+	switch u.Scheme {
+	case "ssl":
+		cer, err := tls.LoadX509KeyPair("server.pem", "server.pem")
+		if err != nil {
+			glog.Error(err)
+			return err
+		}
+		config := &tls.Config{Certificates: []tls.Certificate{cer}}
+		this.ln, err = tls.Listen(u.Scheme, u.Host, config)
+	case "tcp":
+		this.ln, err = net.Listen(u.Scheme, u.Host)
+	default:
+		panic("url scheme invalid!")
+	}
+
 	if err != nil {
+		glog.Error(err)
 		return err
 	}
-	defer this.ln.Close()
 
+	defer this.ln.Close()
 	glog.Infof("server/ListenAndServe: server is ready...")
 
 	var tempDelay time.Duration // how long to sleep on accept failure

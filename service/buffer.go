@@ -23,8 +23,8 @@ import (
 )
 
 var (
-	bufcnt int64
-	DefaultBufferSize     int64
+	bufcnt            int64
+	DefaultBufferSize int64
 )
 
 const (
