@@ -20,11 +20,13 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"net/url"
+	//   "net/url"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/nagae-memooff/config"
 	"github.com/nagae-memooff/surgemq/auth"
 	"github.com/nagae-memooff/surgemq/sessions"
 	"github.com/nagae-memooff/surgemq/topics"
@@ -119,7 +121,7 @@ type Server struct {
 // or if there's some critical error that stops the server from running. The URI
 // supplied should be of the form "protocol://host:port" that can be parsed by
 // url.Parse(). For example, an URI could be "tcp://0.0.0.0:1883".
-func (this *Server) ListenAndServe(uri string) error {
+func (this *Server) ListenAndServe() error {
 	defer atomic.CompareAndSwapInt32(&this.running, 1, 0)
 
 	if !atomic.CompareAndSwapInt32(&this.running, 0, 1) {
@@ -129,67 +131,97 @@ func (this *Server) ListenAndServe(uri string) error {
 	this.quit = make(chan struct{})
 
 	//     _, err := url.Parse(uri)
-	u, err := url.Parse(uri)
-	if err != nil {
-		return err
-	}
+	var err error
 
-	switch u.Scheme {
-	case "ssl":
-		cer, err := tls.LoadX509KeyPair("server.pem", "server.pem")
-		if err != nil {
-			glog.Error(err)
-			return err
-		}
-		config := &tls.Config{Certificates: []tls.Certificate{cer}}
-		this.ln, err = tls.Listen(u.Scheme, u.Host, config)
-	case "tcp":
-		this.ln, err = net.Listen(u.Scheme, u.Host)
-	default:
-		panic("url scheme invalid!")
-	}
-
-	if err != nil {
-		glog.Error(err)
-		return err
-	}
-
-	defer this.ln.Close()
-	glog.Infof("server/ListenAndServe: server is ready...")
-
-	var tempDelay time.Duration // how long to sleep on accept failure
-
-	for {
-		conn, err := this.ln.Accept()
-
-		if err != nil {
-			// http://zhen.org/blog/graceful-shutdown-of-go-net-dot-listeners/
-			select {
-			case <-this.quit:
-				return nil
-
-			default:
+	if strings.Contains(config.Get("uri_scheme"), "ssl") {
+		go func() {
+			cer, err := tls.LoadX509KeyPair(config.Get("ssl_cert"), config.Get("ssl_key"))
+			if err != nil {
+				glog.Error(err)
+				panic(err)
 			}
-
-			// Borrowed from go1.3.3/src/pkg/net/http/server.go:1699
-			if ne, ok := err.(net.Error); ok && ne.Temporary() {
-				if tempDelay == 0 {
-					tempDelay = 5 * time.Millisecond
-				} else {
-					tempDelay *= 2
-				}
-				if max := 1 * time.Second; tempDelay > max {
-					tempDelay = max
-				}
-				glog.Errorf("server/ListenAndServe: Accept error: %v; retrying in %v", err, tempDelay)
-				time.Sleep(tempDelay)
-				continue
+			tls_config := &tls.Config{Certificates: []tls.Certificate{cer}}
+			ssl_host := fmt.Sprintf("%s:%s", config.GetMulti("ssl_listen_addr", "ssl_port")...)
+			ssl_ln, err := tls.Listen("tcp", ssl_host, tls_config)
+			if err != nil {
+				glog.Error(err)
+				panic(err)
 			}
-			return err
-		}
+			fmt.Printf("listening ssl: %v\n", ssl_host)
 
-		go this.handleConnection(conn)
+			defer ssl_ln.Close()
+			var tempDelay time.Duration // how long to sleep on accept failure
+
+			for {
+				conn, err := ssl_ln.Accept()
+
+				if err != nil {
+					// Borrowed from go1.3.3/src/pkg/net/http/server.go:1699
+					if ne, ok := err.(net.Error); ok && ne.Temporary() {
+						if tempDelay == 0 {
+							tempDelay = 5 * time.Millisecond
+						} else {
+							tempDelay *= 2
+						}
+						if max := 1 * time.Second; tempDelay > max {
+							tempDelay = max
+						}
+						glog.Errorf("server/ListenAndServe: Accept ssl error: %v; retrying in %v", err, tempDelay)
+						time.Sleep(tempDelay)
+						continue
+					}
+					panic(err)
+				}
+
+				go this.handleConnection(conn)
+			}
+		}()
 	}
+
+	if strings.Contains(config.Get("uri_scheme"), "tcp") {
+		go func() {
+			tcp_host := fmt.Sprintf("%s:%s", config.GetMulti("tcp_listen_addr", "tcp_port")...)
+
+			this.ln, err = net.Listen("tcp", tcp_host)
+			if err != nil {
+				glog.Error(err)
+				panic(err)
+				//         return
+			}
+			fmt.Printf("listening tcp: %v\n", tcp_host)
+
+			defer this.ln.Close()
+			var tempDelay time.Duration // how long to sleep on accept failure
+
+			for {
+				conn, err := this.ln.Accept()
+
+				if err != nil {
+					// Borrowed from go1.3.3/src/pkg/net/http/server.go:1699
+					if ne, ok := err.(net.Error); ok && ne.Temporary() {
+						if tempDelay == 0 {
+							tempDelay = 5 * time.Millisecond
+						} else {
+							tempDelay *= 2
+						}
+						if max := 1 * time.Second; tempDelay > max {
+							tempDelay = max
+						}
+						glog.Errorf("server/ListenAndServe: Accept error: %v; retrying in %v", err, tempDelay)
+						time.Sleep(tempDelay)
+						continue
+					}
+					//           return
+					panic(err)
+				}
+
+				go this.handleConnection(conn)
+			}
+		}()
+	}
+
+	<-this.quit
+	return nil
 }
 
 // Publish sends a single MQTT PUBLISH message to the server. On completion, the
@@ -257,7 +289,6 @@ func (this *Server) Close() error {
 }
 
 // HandleConnection is for the broker to handle an incoming connection from a client
-// TODO: 如果client_id冲突，则踢掉旧的连接
 func (this *Server) handleConnection(c io.Closer) (svc *service, err error) {
 	if c == nil {
 		return nil, ErrInvalidConnectionType
