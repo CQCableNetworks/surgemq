@@ -6,7 +6,7 @@ import (
 )
 
 var (
-	PendingQueue               = make([]*message.PublishMessage, 65000, 65000)
+	PendingQueue               = make([]*message.PublishMessage, 65536, 65536)
 	OfflineTopicQueue          = make(map[string][][]byte)
 	OfflineTopicQueueProcessor = make(chan *message.PublishMessage)
 	ClientMap                  = make(map[string]*net.Conn)
