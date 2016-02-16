@@ -55,7 +55,7 @@ func (this *service) receiver() {
 		glog.Debugf("(%s) Stopping receiver", this.cid())
 	}()
 
-	glog.Debugf("(%s) Starting receiver", this.cid())
+	//   glog.Debugf("(%s) Starting receiver", this.cid())
 
 	this.wgStarted.Done()
 
@@ -75,7 +75,6 @@ func (this *service) receiver() {
 
 			if err != nil {
 				if err != io.EOF {
-					//TODO: 连接断了，是不是该加入队列，等重连再发
 					glog.Errorf("(%s) error reading from connection: %v", this.cid(), err)
 				}
 				return

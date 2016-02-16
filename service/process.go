@@ -20,7 +20,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math/rand"
 	"reflect"
 	"strings"
 	"time"
@@ -349,7 +348,7 @@ func (this *service) processSubscribe(msg *message.SubscribeMessage) error {
 		// yeah I am not checking errors here. If there's an error we don't want the
 		// subscription to stop, just let it go.
 		this.topicsMgr.Retained(t, &this.rmsgs)
-		glog.Debugf("(%s) topic = %s, retained count = %d", this.cid(), string(t), len(this.rmsgs))
+		//     glog.Debugf("(%s) topic = %s, retained count = %d", this.cid(), string(t), len(this.rmsgs))
 	}
 
 	if err := resp.AddReturnCodes(retcodes); err != nil {
@@ -541,6 +540,10 @@ func (this *service) _process_publish(msg *message.PublishMessage) (err error) {
 
 func (this *service) _process_offline_message(topic string) (err error) {
 	offline_msgs := OfflineTopicQueue[topic]
+	if offline_msgs == nil {
+		return nil
+	}
+
 	for _, payload := range offline_msgs {
 		msg := message.NewPublishMessage()
 		msg.SetTopic([]byte(topic))
@@ -549,10 +552,12 @@ func (this *service) _process_offline_message(topic string) (err error) {
 		msg.SetQoS(message.QosAtLeastOnce)
 		this.onPublish(msg)
 	}
-	OfflineTopicQueue[topic] = [][]byte{}
+	//FIXME: 高压下在这儿空指针过？？？
+	OfflineTopicQueue[topic] = nil
 	return nil
 }
 
 func getRandPkgId() uint16 {
-	return uint16(rand.Intn(65000))
+	PkgIdProcessor <- true
+	return <-PkgIdGenerator
 }

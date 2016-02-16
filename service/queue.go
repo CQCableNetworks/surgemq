@@ -11,7 +11,10 @@ var (
 	OfflineTopicQueueProcessor = make(chan *message.PublishMessage)
 	ClientMap                  = make(map[string]*net.Conn)
 	ClientMapProcessor         = make(chan ClientHash)
+	PkgIdProcessor             = make(chan bool)
+	PkgIdGenerator             = make(chan uint16)
 	Max_message_queue          int
+	PkgId                      = uint16(1)
 )
 
 type ClientHash struct {
@@ -24,6 +27,7 @@ func init() {
 	go func() {
 		for msg := range OfflineTopicQueueProcessor {
 			topic := string(msg.Topic())
+			_ = topic
 			new_msg_queue := append(OfflineTopicQueue[topic], msg.Payload())
 			length := len(new_msg_queue)
 			if length > Max_message_queue {
@@ -41,6 +45,13 @@ func init() {
 				(*ClientMap[client_id]).Close()
 			}
 			ClientMap[client_id] = client.Conn
+		}
+	}()
+
+	go func() {
+		for _ = range PkgIdProcessor {
+			PkgIdGenerator <- PkgId
+			PkgId = (PkgId % 65535) + 1
 		}
 	}()
 }
