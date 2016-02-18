@@ -52,7 +52,7 @@ func (this *service) processor() {
 	}()
 
 	publish_timeout_second = time.Duration(config.GetInt("publish_timeout_second"))
-	glog.Debugf("(%s) Starting processor", this.cid())
+	//   glog.Debugf("(%s) Starting processor", this.cid())
 	//   glog.Errorf("PendingQueue: %v", PendingQueue[0:10])
 
 	this.wgStarted.Done()
@@ -410,15 +410,7 @@ func (this *service) onPublish(msg *message.PublishMessage) (err error) {
 
 	//glog.Debugf("(%s) Publishing to topic %q and %d subscribers", this.cid(), string(msg.Topic()), len(this.subs))
 	//   fmt.Printf("value: %v\n", config.GetModel())
-	pkt_id := msg.PacketId()
-	PendingQueue[pkt_id] = msg
-	go func() {
-		time.Sleep(publish_timeout_second * time.Second)
-		if PendingQueue[pkt_id] != nil {
-			PendingQueue[pkt_id] = nil
-			OfflineTopicQueueProcessor <- msg
-		}
-	}()
+	go handlePendingMessage(msg)
 
 	for _, s := range this.subs {
 		if s != nil {
@@ -427,13 +419,13 @@ func (this *service) onPublish(msg *message.PublishMessage) (err error) {
 				glog.Errorf("Invalid onPublish Function")
 				return fmt.Errorf("Invalid onPublish Function")
 			} else {
-				err = (*fn)(msg)
+				(*fn)(msg)
 				//         glog.Errorf("OfflineTopicQueue[%s]: %v, len is: %d\n", msg.Topic(), OfflineTopicQueue[string(msg.Topic())], len(OfflineTopicQueue[string(msg.Topic())]))
 			}
 		}
 	}
 
-	return err
+	return nil
 }
 
 type BroadCastMessage struct {
@@ -471,14 +463,8 @@ func (this *service) onReceiveBadge(msg *message.PublishMessage) (err error) {
 		return
 	}
 	//   glog.Infof("badge: %v, type: %T\n", badge_message.Data, badge_message.Data)
-	go func() {
-		key := fmt.Sprintf("badge_account:%s", account_id)
-		_, err = topics.RedisDo("set", key, badge_message.Data)
-		if err != nil {
-			glog.Errorf("can't set badge! account_id: %s, badge: %v\n", account_id, badge_message)
-		}
-	}()
 
+	go handleBadge(account_id, badge_message)
 	return
 }
 
@@ -501,18 +487,7 @@ func (this *service) onGroupPublish(msg *message.PublishMessage) (err error) {
 	}
 
 	for _, client_id := range broadcast_msg.Clients {
-		topic := topics.GetUserTopic(client_id)
-		if topic == "" {
-			continue
-		}
-
-		//     debug.PrintStack()
-		new_msg := message.NewPublishMessage()
-		new_msg.SetTopic([]byte(topic))
-		new_msg.SetPacketId(getRandPkgId())
-		new_msg.SetPayload(payload)
-		new_msg.SetQoS(message.QosAtLeastOnce)
-		this.onPublish(new_msg)
+		this._process_group_message(client_id, payload)
 	}
 
 	return
@@ -521,15 +496,9 @@ func (this *service) onGroupPublish(msg *message.PublishMessage) (err error) {
 func (this *service) _process_publish(msg *message.PublishMessage) (err error) {
 	switch string(msg.Topic()) {
 	case config.Get("broadcast_channel"):
-		go func() {
-			this.onGroupPublish(msg)
-		}()
-		err = nil
+		go this.onGroupPublish(msg)
 	case config.Get("s_channel"):
-		go func() {
-			this.onReceiveBadge(msg)
-		}()
-		err = nil
+		go this.onReceiveBadge(msg)
 	default:
 		err = this.onPublish(msg)
 	}
@@ -538,21 +507,36 @@ func (this *service) _process_publish(msg *message.PublishMessage) (err error) {
 	return
 }
 
+func (this *service) _process_group_message(client_id string, payload []byte) {
+
+	topic := topics.GetUserTopic(client_id)
+	if topic == "" {
+		return
+	}
+
+	tmp_msg := message.NewPublishMessage()
+	tmp_msg.SetTopic([]byte(topic))
+	tmp_msg.SetPacketId(getRandPkgId())
+	tmp_msg.SetPayload(payload)
+	tmp_msg.SetQoS(message.QosAtLeastOnce)
+	this.onPublish(tmp_msg)
+}
+
 func (this *service) _process_offline_message(topic string) (err error) {
+	return nil
 	offline_msgs := OfflineTopicQueue[topic]
 	if offline_msgs == nil {
 		return nil
 	}
 
+	msg := message.NewPublishMessage()
 	for _, payload := range offline_msgs {
-		msg := message.NewPublishMessage()
 		msg.SetTopic([]byte(topic))
 		msg.SetPacketId(getRandPkgId())
 		msg.SetPayload(payload)
 		msg.SetQoS(message.QosAtLeastOnce)
 		this.onPublish(msg)
 	}
-	//FIXME: 高压下在这儿空指针过？？？
 	OfflineTopicQueue[topic] = nil
 	return nil
 }
@@ -560,4 +544,22 @@ func (this *service) _process_offline_message(topic string) (err error) {
 func getRandPkgId() uint16 {
 	PkgIdProcessor <- true
 	return <-PkgIdGenerator
+}
+
+func handlePendingMessage(msg *message.PublishMessage) {
+	pkt_id := msg.PacketId()
+	PendingQueue[pkt_id] = msg
+
+	time.Sleep(publish_timeout_second * time.Second)
+	if PendingQueue[pkt_id] != nil {
+		PendingQueue[pkt_id] = nil
+		OfflineTopicQueueProcessor <- msg
+	}
+}
+func handleBadge(account_id string, badge_message BadgeMessage) {
+	key := fmt.Sprintf("badge_account:%s", account_id)
+	_, err := topics.RedisDo("set", key, badge_message.Data)
+	if err != nil {
+		glog.Errorf("can't set badge! account_id: %s, badge: %v\n", account_id, badge_message)
+	}
 }

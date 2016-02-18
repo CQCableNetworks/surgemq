@@ -154,7 +154,6 @@ func (this *Server) ListenAndServe() error {
 
 			for {
 				conn, err := ssl_ln.Accept()
-
 				if err != nil {
 					// Borrowed from go1.3.3/src/pkg/net/http/server.go:1699
 					if ne, ok := err.(net.Error); ok && ne.Temporary() {
@@ -179,7 +178,7 @@ func (this *Server) ListenAndServe() error {
 	}
 
 	if strings.Contains(config.Get("uri_scheme"), "tcp") {
-		go func() {
+//     go func() {
 			tcp_host := fmt.Sprintf("%s:%s", config.GetMulti("tcp_listen_addr", "tcp_port")...)
 
 			this.ln, err = net.Listen("tcp", tcp_host)
@@ -217,7 +216,7 @@ func (this *Server) ListenAndServe() error {
 
 				go this.handleConnection(conn)
 			}
-		}()
+//     }()
 	}
 
 	<-this.quit
@@ -364,7 +363,7 @@ func (this *Server) handleConnection(c io.Closer) (svc *service, err error) {
 		topicsMgr: this.topicsMgr,
 	}
 
-	c_hash := ClientHash{Name: string(req.ClientId()), Conn: &conn}
+	c_hash := &ClientHash{Name: string(req.ClientId()), Conn: &conn}
 	ClientMapProcessor <- c_hash
 
 	err = this.getSession(svc, req, resp)
