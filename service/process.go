@@ -391,11 +391,11 @@ func (this *service) processUnsubscribe(msg *message.UnsubscribeMessage) error {
 // the ack cycle. This method will get the list of subscribers based on the publish
 // topic, and publishes the message to the list of subscribers.
 func (this *service) onPublish(msg *message.PublishMessage) (err error) {
-	//	if msg.Retain() {
-	//		if err = this.topicsMgr.Retain(msg); err != nil {
-	//			glog.Errorf("(%s) Error retaining message: %v", this.cid(), err)
-	//		}
-	//	}
+	//   if msg.Retain() {
+	//     if err = this.topicsMgr.Retain(msg); err != nil {
+	//       glog.Errorf("(%s) Error retaining message: %v", this.cid(), err)
+	//     }
+	//   }
 
 	//   var subs []interface{}
 	var subs = make([]interface{}, 1, 1)
@@ -405,9 +405,9 @@ func (this *service) onPublish(msg *message.PublishMessage) (err error) {
 		return err
 	}
 
-	//   msg.SetRetain(false)
+	msg.SetRetain(false)
 
-	//glog.Debugf("(%s) Publishing to topic %q and %d subscribers", this.cid(), string(msg.Topic()), len(this.subs))
+	//   glog.Errorf("(%s) Publishing to topic %q and %d subscribers", this.cid(), string(msg.Topic()), len(this.subs))
 	//   fmt.Printf("value: %v\n", config.GetModel())
 	go handlePendingMessage(msg)
 

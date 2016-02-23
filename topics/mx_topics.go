@@ -77,7 +77,7 @@ func (this *mxTopics) Subscribe(topic []byte, qos byte, sub interface{}, client_
 		//     Log.Printf("invalid qos: %d\n", qos)
 		qos = MXMaxQosAllowed
 	}
-	//   glog.Infof("topic: %s, qos: %d,  client_id: %s\n", topic, qos, client_id)
+	//   glog.Errorf("topic: %s, qos: %d,  client_id: %s\n", topic, qos, client_id)
 
 	this.subscriber[topic_str] = sub
 
@@ -432,12 +432,13 @@ func checkValidchannel(client_id, topic string) bool {
 }
 
 func GetUserTopic(client_id string) (topic string) {
+	//   defer fmt.Printf("%s get topic: %s\n", client_id, topic)
 	topic = Channelcache[client_id]
 	if topic != "" {
 		return
 	}
 
-	key := fmt.Sprintf("channel:%s", client_id)
+	key := "channel:" + client_id
 	data, err := RedisDo("get", key)
 	if err != nil {
 		glog.Errorln(err)
@@ -450,7 +451,7 @@ func GetUserTopic(client_id string) (topic string) {
 		return
 	}
 
-	topic = fmt.Sprintf("/u/%s", data)
+	topic = "/u/" + data
 	//   glog.Errorln(Channelcache)
 	Channelcache[client_id] = topic
 	return
@@ -473,7 +474,7 @@ func LoadChannelCache() {
 		glog.Errorln("长度不一致，不缓存了！")
 	} else {
 		for i := 0; i < len(channels); i++ {
-			Channelcache[client_ids[i]] = fmt.Sprintf("/u/%s", channels[i])
+			Channelcache[client_ids[i]] = "/u/" + channels[i]
 		}
 	}
 }
