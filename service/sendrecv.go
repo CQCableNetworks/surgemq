@@ -102,7 +102,7 @@ func (this *service) sender() {
 		glog.Debugf("(%s) Stopping sender", this.cid())
 	}()
 
-//   glog.Debugf("(%s) Starting sender", this.cid())
+	//   glog.Debugf("(%s) Starting sender", this.cid())
 
 	this.wgStarted.Done()
 

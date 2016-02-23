@@ -36,9 +36,7 @@ func newRedisPool() *redis.Pool {
 
 func RedisDo(cmd string, args ...interface{}) (data string, err error) {
 	c := RedisPool.Get()
-	defer func() {
-		c.Close()
-	}()
+	defer c.Close()
 
 	data_origin, err := c.Do(cmd, args...)
 	if err != nil {
@@ -56,9 +54,7 @@ func RedisDo(cmd string, args ...interface{}) (data string, err error) {
 
 func GetClientIDandChannels() (client_ids []string, channels []interface{}, err error) {
 	c := RedisPool.Get()
-	defer func() {
-		c.Close()
-	}()
+	defer c.Close()
 
 	data_origin, err := c.Do("keys", "channel:*")
 	if err != nil {
@@ -88,9 +84,7 @@ func GetClientIDandChannels() (client_ids []string, channels []interface{}, err 
 
 func RedisDoGetMulti(cmd string, args ...interface{}) (data []string, err error) {
 	c := RedisPool.Get()
-	defer func() {
-		c.Close()
-	}()
+	defer c.Close()
 
 	//   data_origin, err := c.Do("keys", "channel:*")
 	data_origin, err := c.Do(cmd, args...)

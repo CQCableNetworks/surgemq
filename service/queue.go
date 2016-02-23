@@ -7,9 +7,15 @@ import (
 
 var (
 	PendingQueue = make([]*message.PublishMessage, 65536, 65536)
+	//   PendingProcessor = make(chan *message.PublishMessage, 65536)
 
 	OfflineTopicQueue          = make(map[string][][]byte)
 	OfflineTopicQueueProcessor = make(chan *message.PublishMessage, 2048)
+	OfflineTopicCleanProcessor = make(chan string, 2048)
+
+	// 由于这个需要一一对应，并且把结果传回去，所以不能带缓冲。
+	OfflineTopicGetProcessor = make(chan string)
+	OfflineTopicGetChannel   = make(chan [][]byte)
 
 	ClientMap          = make(map[string]*net.Conn)
 	ClientMapProcessor = make(chan *ClientHash, 1024)
@@ -30,10 +36,12 @@ func init() {
 	go func() {
 		for {
 			select {
+			case topic := <-OfflineTopicGetProcessor:
+				OfflineTopicGetChannel <- OfflineTopicQueue[topic]
+			case topic := <-OfflineTopicCleanProcessor:
+				OfflineTopicQueue[topic] = nil
 			case msg := <-OfflineTopicQueueProcessor:
-				continue
 				topic := string(msg.Topic())
-				_ = topic
 				new_msg_queue := append(OfflineTopicQueue[topic], msg.Payload())
 				length := len(new_msg_queue)
 				if length > Max_message_queue {

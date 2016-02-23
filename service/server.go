@@ -178,7 +178,7 @@ func (this *Server) ListenAndServe() error {
 	}
 
 	if strings.Contains(config.Get("uri_scheme"), "tcp") {
-//     go func() {
+		go func() {
 			tcp_host := fmt.Sprintf("%s:%s", config.GetMulti("tcp_listen_addr", "tcp_port")...)
 
 			this.ln, err = net.Listen("tcp", tcp_host)
@@ -216,7 +216,7 @@ func (this *Server) ListenAndServe() error {
 
 				go this.handleConnection(conn)
 			}
-//     }()
+		}()
 	}
 
 	<-this.quit

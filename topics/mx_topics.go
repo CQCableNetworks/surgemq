@@ -5,6 +5,7 @@ import (
 	"github.com/garyburd/redigo/redis"
 	//   "github.com/nagae-memooff/config"
 	//   "github.com/nagae-memooff/surgemq/topics"
+	//   "github.com/nagae-memooff/surgemq/service"
 	"github.com/surge/glog"
 	"github.com/surgemq/message"
 	"sync"
@@ -23,7 +24,11 @@ type mxTopics struct {
 	// Sub/unsub mutex
 	smu sync.RWMutex
 	// Subscription tree
-	sroot *mxsnode
+	//   sroot *mxsnode
+
+	// subscription map
+	//实际类型应该是： map[string]*onPublishFunc
+	subscriber map[string]interface{}
 
 	// Retained message mutex
 	rmu sync.RWMutex
@@ -43,13 +48,16 @@ func init() {
 // when the server goes, everything will be gone. Use with care.
 func NewMXProvider() *mxTopics {
 	return &mxTopics{
-		sroot: newMXSNode(),
-		rroot: newMXRNode(),
+		//     sroot: newMXSNode(),
+		subscriber: make(map[string]interface{}),
+		rroot:      newMXRNode(),
 	}
 }
 
 // FIXME 把clientid改为 某上层对象的指针，以便让它能断掉连接
+//TODO: 去掉树形结构，就留一个subscribe函数即可
 func (this *mxTopics) Subscribe(topic []byte, qos byte, sub interface{}, client_id string) (byte, error) {
+	topic_str := string(topic)
 	if !message.ValidQos(qos) {
 		return message.QosFailure, fmt.Errorf("Invalid QoS %d", qos)
 	}
@@ -58,7 +66,7 @@ func (this *mxTopics) Subscribe(topic []byte, qos byte, sub interface{}, client_
 		return message.QosFailure, fmt.Errorf("Subscriber cannot be nil")
 	}
 
-	if !checkValidchannel(client_id, string(topic)) {
+	if !checkValidchannel(client_id, topic_str) {
 		return message.QosFailure, fmt.Errorf("Invalid Channel %d", qos)
 	}
 
@@ -71,9 +79,7 @@ func (this *mxTopics) Subscribe(topic []byte, qos byte, sub interface{}, client_
 	}
 	//   glog.Infof("topic: %s, qos: %d,  client_id: %s\n", topic, qos, client_id)
 
-	if err := this.sroot.sinsert(topic, qos, sub); err != nil {
-		return message.QosFailure, err
-	}
+	this.subscriber[topic_str] = sub
 
 	return qos, nil
 }
@@ -82,7 +88,9 @@ func (this *mxTopics) Unsubscribe(topic []byte, sub interface{}) error {
 	this.smu.Lock()
 	defer this.smu.Unlock()
 
-	return this.sroot.sremove(topic, sub)
+	this.subscriber[string(topic)] = nil
+	return nil
+	//   return this.sroot.sremove(topic, sub)
 }
 
 // Returned values will be invalidated by the next Subscribers call
@@ -94,10 +102,9 @@ func (this *mxTopics) Subscribers(topic []byte, qos byte, subs *[]interface{}, q
 	this.smu.RLock()
 	defer this.smu.RUnlock()
 
-	*subs = (*subs)[0:0]
+	(*subs)[0] = this.subscriber[string(topic)]
 	*qoss = (*qoss)[0:0]
-
-	return this.sroot.smatch(topic, qos, subs, qoss)
+	return nil
 }
 
 func (this *mxTopics) Retain(msg *message.PublishMessage) error {
@@ -122,159 +129,12 @@ func (this *mxTopics) Retained(topic []byte, msgs *[]*message.PublishMessage) er
 }
 
 func (this *mxTopics) Close() error {
-	this.sroot = nil
+	this.subscriber = nil
 	this.rroot = nil
 	return nil
 }
 
 // subscrition nodes
-type mxsnode struct {
-	// If this is the end of the topic string, then add subscribers here
-	subs []interface{}
-	qos  []byte
-
-	// Otherwise add the next topic level here
-	snodes map[string]*mxsnode
-}
-
-func newMXSNode() *mxsnode {
-	return &mxsnode{
-		snodes: make(map[string]*mxsnode),
-	}
-}
-
-func (this *mxsnode) sinsert(topic []byte, qos byte, sub interface{}) error {
-	// If there's no more topic levels, that means we are at the matching snode
-	// to insert the subscriber. So let's see if there's such subscriber,
-	// if so, update it. Otherwise insert it.
-	if len(topic) == 0 {
-		// Let's see if the subscriber is already on the list. If yes, update
-		// QoS and then return.
-		for i := range this.subs {
-			if equal(this.subs[i], sub) {
-				this.qos[i] = qos
-				return nil
-			}
-		}
-
-		// Otherwise add.
-		this.subs = append(this.subs, sub)
-		this.qos = append(this.qos, qos)
-
-		return nil
-	}
-
-	// Not the last level, so let's find or create the next level snode, and
-	// recursively call it's insert().
-
-	// ntl = next topic level
-	ntl, rem, err := nextMxTopicLevel(topic)
-	if err != nil {
-		return err
-	}
-
-	level := string(ntl)
-
-	// Add snode if it doesn't already exist
-	n, ok := this.snodes[level]
-	if !ok {
-		n = newMXSNode()
-		this.snodes[level] = n
-	}
-
-	return n.sinsert(rem, qos, sub)
-}
-
-// This remove implementation ignores the QoS, as long as the subscriber
-// matches then it's removed
-func (this *mxsnode) sremove(topic []byte, sub interface{}) error {
-	// If the topic is empty, it means we are at the final matching snode. If so,
-	// let's find the matching subscribers and remove them.
-	if len(topic) == 0 {
-		// If subscriber == nil, then it's signal to remove ALL subscribers
-		if sub == nil {
-			this.subs = this.subs[0:0]
-			this.qos = this.qos[0:0]
-			return nil
-		}
-
-		// If we find the subscriber then remove it from the list. Technically
-		// we just overwrite the slot by shifting all other items up by one.
-		for i := range this.subs {
-			if equal(this.subs[i], sub) {
-				this.subs = append(this.subs[:i], this.subs[i+1:]...)
-				this.qos = append(this.qos[:i], this.qos[i+1:]...)
-				return nil
-			}
-		}
-
-		return fmt.Errorf("memtopics/remove: No topic found for subscriber")
-	}
-
-	// Not the last level, so let's find the next level snode, and recursively
-	// call it's remove().
-
-	// ntl = next topic level
-	ntl, rem, err := nextMxTopicLevel(topic)
-	if err != nil {
-		return err
-	}
-
-	level := string(ntl)
-
-	// Find the snode that matches the topic level
-	n, ok := this.snodes[level]
-	if !ok {
-		return fmt.Errorf("memtopics/remove: No topic found")
-	}
-
-	// Remove the subscriber from the next level snode
-	if err := n.sremove(rem, sub); err != nil {
-		return err
-	}
-
-	// If there are no more subscribers and snodes to the next level we just visited
-	// let's remove it
-	if len(n.subs) == 0 && len(n.snodes) == 0 {
-		delete(this.snodes, level)
-	}
-
-	return nil
-}
-
-// smatch() returns all the subscribers that are subscribed to the topic. Given a topic
-// with no wildcards (publish topic), it returns a list of subscribers that subscribes
-// to the topic. For each of the level names, it's a match
-// - if there are subscribers to '#', then all the subscribers are added to result set
-func (this *mxsnode) smatch(topic []byte, qos byte, subs *[]interface{}, qoss *[]byte) error {
-	// If the topic is empty, it means we are at the final matching snode. If so,
-	// let's find the subscribers that match the qos and append them to the list.
-	if len(topic) == 0 {
-		this.matchQos(qos, subs, qoss)
-		return nil
-	}
-
-	// ntl = next topic level
-	ntl, rem, err := nextMxTopicLevel(topic)
-	if err != nil {
-		return err
-	}
-
-	level := string(ntl)
-
-	for k, n := range this.snodes {
-		// If the key is "#", then these subscribers are added to the result set
-		if k == MWC {
-			n.matchQos(qos, subs, qoss)
-		} else if k == SWC || k == level {
-			if err := n.smatch(rem, qos, subs, qoss); err != nil {
-				return err
-			}
-		}
-	}
-
-	return nil
-}
 
 // retained message nodes
 type mxrnode struct {
@@ -497,16 +357,6 @@ func nextMxTopicLevel(topic []byte) ([]byte, []byte, error) {
 // due to the QoS granted is lower than the published message QoS. For example,
 // if the client is granted only QoS 0, and the publish message is QoS 1, then this
 // client is not to be send the published message.
-func (this *mxsnode) matchQos(qos byte, subs *[]interface{}, qoss *[]byte) {
-	for i, sub := range this.subs {
-		// If the published QoS is higher than the subscriber QoS, then we skip the
-		// subscriber. Otherwise, add to the list.
-		if qos <= this.qos[i] {
-			*subs = append(*subs, sub)
-			*qoss = append(*qoss, qos)
-		}
-	}
-}
 
 // func equal(k1, k2 interface{}) bool {
 // 	if reflect.TypeOf(k1) != reflect.TypeOf(k2) {

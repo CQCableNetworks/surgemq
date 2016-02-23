@@ -16,7 +16,8 @@ package service
 
 import (
 	"encoding/base64"
-	"encoding/json"
+	"github.com/pquerna/ffjson/ffjson"
+	//   "encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -33,8 +34,7 @@ import (
 )
 
 var (
-	errDisconnect          = errors.New("Disconnect")
-	publish_timeout_second time.Duration
+	errDisconnect = errors.New("Disconnect")
 )
 
 // processor() reads messages from the incoming buffer and processes them
@@ -51,7 +51,6 @@ func (this *service) processor() {
 		//glog.Debugf("(%s) Stopping processor", this.cid())
 	}()
 
-	publish_timeout_second = time.Duration(config.GetInt("publish_timeout_second"))
 	//   glog.Debugf("(%s) Starting processor", this.cid())
 	//   glog.Errorf("PendingQueue: %v", PendingQueue[0:10])
 
@@ -80,7 +79,7 @@ func (this *service) processor() {
 		this.inStat.increment(int64(n))
 
 		// 5. Process the read message
-		err = this.processIncoming(&msg)
+		err = this.processIncoming(msg)
 		if err != nil {
 			if err != errDisconnect {
 				glog.Errorf("(%s) Error processing %s: %v", this.cid(), msg.Name(), err)
@@ -109,17 +108,17 @@ func (this *service) processor() {
 	}
 }
 
-func (this *service) processIncoming(msg *message.Message) error {
+func (this *service) processIncoming(msg message.Message) error {
 	var err error = nil
 	//   glog.Errorf("this.subs is: %v,  count is %d, msg_type is %T", this.subs, len(this.subs), msg)
 
-	switch msg := (*msg).(type) {
+	switch msg := (msg).(type) {
 	case *message.PublishMessage:
 		// For PUBLISH message, we should figure out what QoS it is and process accordingly
 		// If QoS == 0, we should just take the next step, no ack required
 		// If QoS == 1, we should send back PUBACK, then take the next step
 		// If QoS == 2, we need to put it in the ack queue, send back PUBREC
-		(*msg).SetPacketId(getRandPkgId())
+		//     (*msg).SetPacketId(getRandPkgId())
 		//     glog.Errorf("\n%T:%d==========\nmsg is %v\n=====================", *msg, msg.PacketId(), *msg)
 		err = this.processPublish(msg)
 
@@ -127,8 +126,7 @@ func (this *service) processIncoming(msg *message.Message) error {
 		//     glog.Errorf("this.subs is: %v,  count is %d, msg_type is %T", this.subs, len(this.subs), msg)
 		// For PUBACK message, it means QoS 1, we should send to ack queue
 		//     glog.Errorf("\n%T:%d==========\nmsg is %v\n=====================", *msg, msg.PacketId(), *msg)
-		pkg_id := msg.PacketId()
-		PendingQueue[pkg_id] = nil
+		go _process_ack(msg.PacketId())
 		this.sess.Pub1ack.Ack(msg)
 		this.processAcked(this.sess.Pub1ack)
 
@@ -365,11 +363,10 @@ func (this *service) processSubscribe(msg *message.SubscribeMessage) error {
 			return err
 		}
 	}
-	go func() {
-		for _, t := range topics {
-			this._process_offline_message(string(t))
-		}
-	}()
+
+	for _, t := range topics {
+		go this._process_offline_message(string(t))
+	}
 
 	return nil
 }
@@ -394,29 +391,31 @@ func (this *service) processUnsubscribe(msg *message.UnsubscribeMessage) error {
 // the ack cycle. This method will get the list of subscribers based on the publish
 // topic, and publishes the message to the list of subscribers.
 func (this *service) onPublish(msg *message.PublishMessage) (err error) {
-	if msg.Retain() {
-		if err = this.topicsMgr.Retain(msg); err != nil {
-			glog.Errorf("(%s) Error retaining message: %v", this.cid(), err)
-		}
-	}
+	//	if msg.Retain() {
+	//		if err = this.topicsMgr.Retain(msg); err != nil {
+	//			glog.Errorf("(%s) Error retaining message: %v", this.cid(), err)
+	//		}
+	//	}
 
-	err = this.topicsMgr.Subscribers(msg.Topic(), msg.QoS(), &this.subs, &this.qoss)
+	//   var subs []interface{}
+	var subs = make([]interface{}, 1, 1)
+	err = this.topicsMgr.Subscribers(msg.Topic(), msg.QoS(), &subs, &this.qoss)
 	if err != nil {
 		glog.Errorf("(%s) Error retrieving subscribers list: %v", this.cid(), err)
 		return err
 	}
 
-	msg.SetRetain(false)
+	//   msg.SetRetain(false)
 
 	//glog.Debugf("(%s) Publishing to topic %q and %d subscribers", this.cid(), string(msg.Topic()), len(this.subs))
 	//   fmt.Printf("value: %v\n", config.GetModel())
 	go handlePendingMessage(msg)
 
-	for _, s := range this.subs {
+	for _, s := range subs {
 		if s != nil {
 			fn, ok := s.(*OnPublishFunc)
 			if !ok {
-				glog.Errorf("Invalid onPublish Function")
+				glog.Errorf("Invalid onPublish Function: %T", s)
 				return fmt.Errorf("Invalid onPublish Function")
 			} else {
 				(*fn)(msg)
@@ -440,7 +439,8 @@ type BadgeMessage struct {
 func (this *service) onReceiveBadge(msg *message.PublishMessage) (err error) {
 	var badge_message BadgeMessage
 
-	datas := strings.Split(fmt.Sprintf("%s", msg.Payload()), ":")
+	datas := strings.Split(string(msg.Payload()), ":")
+	//   datas := strings.Split(fmt.Sprintf("%s", msg.Payload()), ":")
 	if len(datas) != 2 {
 		return errors.New(fmt.Sprintf("invalid message payload: %s", msg.Payload()))
 	}
@@ -457,7 +457,7 @@ func (this *service) onReceiveBadge(msg *message.PublishMessage) (err error) {
 		glog.Errorf("can't decode payload: %s\n", payload_base64)
 	}
 
-	err = json.Unmarshal([]byte(payload_bytes), &badge_message)
+	err = ffjson.Unmarshal([]byte(payload_bytes), &badge_message)
 	if err != nil {
 		glog.Errorf("can't parse message json: account_id: %s, payload: %s\n", account_id, payload_bytes)
 		return
@@ -474,20 +474,25 @@ func (this *service) onGroupPublish(msg *message.PublishMessage) (err error) {
 		payload       []byte
 	)
 
-	err = json.Unmarshal([]byte(fmt.Sprintf("%s", msg.Payload())), &broadcast_msg)
+	err = ffjson.Unmarshal(msg.Payload(), &broadcast_msg)
 	if err != nil {
 		glog.Errorf("can't parse message json: %s\n", msg.Payload())
 		return
 	}
 
-	payload, err = base64.StdEncoding.DecodeString(string(broadcast_msg.Payload))
+	payload, err = base64.StdEncoding.DecodeString(broadcast_msg.Payload)
 	if err != nil {
 		glog.Errorf("can't decode payload: %s\n", broadcast_msg.Payload)
 		return
 	}
 
 	for _, client_id := range broadcast_msg.Clients {
-		this._process_group_message(client_id, payload)
+		topic := topics.GetUserTopic(client_id)
+		if topic == "" {
+			continue
+		}
+
+		go this._process_group_message(topic, payload)
 	}
 
 	return
@@ -500,20 +505,15 @@ func (this *service) _process_publish(msg *message.PublishMessage) (err error) {
 	case config.Get("s_channel"):
 		go this.onReceiveBadge(msg)
 	default:
-		err = this.onPublish(msg)
+		msg.SetPacketId(getRandPkgId())
+		go this.onPublish(msg)
 	}
 	//如果有err，把此条消息加入以topic划分的队列
 	//订阅话题的时候，先去topic对应的队列里筛查，如果有残留，先推
 	return
 }
 
-func (this *service) _process_group_message(client_id string, payload []byte) {
-
-	topic := topics.GetUserTopic(client_id)
-	if topic == "" {
-		return
-	}
-
+func (this *service) _process_group_message(topic string, payload []byte) {
 	tmp_msg := message.NewPublishMessage()
 	tmp_msg.SetTopic([]byte(topic))
 	tmp_msg.SetPacketId(getRandPkgId())
@@ -523,21 +523,16 @@ func (this *service) _process_group_message(client_id string, payload []byte) {
 }
 
 func (this *service) _process_offline_message(topic string) (err error) {
-	return nil
-	offline_msgs := OfflineTopicQueue[topic]
+	//   offline_msgs := OfflineTopicQueue[topic]
+	offline_msgs := getOfflineMsg(topic)
 	if offline_msgs == nil {
 		return nil
 	}
 
-	msg := message.NewPublishMessage()
 	for _, payload := range offline_msgs {
-		msg.SetTopic([]byte(topic))
-		msg.SetPacketId(getRandPkgId())
-		msg.SetPayload(payload)
-		msg.SetQoS(message.QosAtLeastOnce)
-		this.onPublish(msg)
+		this._process_group_message(topic, payload)
 	}
-	OfflineTopicQueue[topic] = nil
+	OfflineTopicCleanProcessor <- topic
 	return nil
 }
 
@@ -547,19 +542,34 @@ func getRandPkgId() uint16 {
 }
 
 func handlePendingMessage(msg *message.PublishMessage) {
+	if msg.QoS() == message.QosAtMostOnce {
+		return
+	}
+
 	pkt_id := msg.PacketId()
 	PendingQueue[pkt_id] = msg
 
-	time.Sleep(publish_timeout_second * time.Second)
+	time.Sleep(2 * time.Second)
 	if PendingQueue[pkt_id] != nil {
 		PendingQueue[pkt_id] = nil
 		OfflineTopicQueueProcessor <- msg
 	}
 }
+
 func handleBadge(account_id string, badge_message BadgeMessage) {
-	key := fmt.Sprintf("badge_account:%s", account_id)
+	key := "badge_account:" + account_id
 	_, err := topics.RedisDo("set", key, badge_message.Data)
 	if err != nil {
 		glog.Errorf("can't set badge! account_id: %s, badge: %v\n", account_id, badge_message)
 	}
+}
+
+func getOfflineMsg(topic string) (msg [][]byte) {
+	OfflineTopicGetProcessor <- topic
+	msg = <-OfflineTopicGetChannel
+	return
+}
+
+func _process_ack(pkg_id uint16) {
+	PendingQueue[pkg_id] = nil
 }
