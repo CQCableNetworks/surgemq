@@ -58,6 +58,7 @@ func (this *service) processor() {
 
 	for {
 		// 1. Find out what message is next and the size of the message
+		//     this.rmu.Lock()
 		mtype, total, err := this.peekMessageSize()
 		if err != nil {
 			//if err != io.EOF {
@@ -73,6 +74,7 @@ func (this *service) processor() {
 			//}
 			return
 		}
+		//     this.rmu.Unlock()
 
 		//glog.Debugf("(%s) Received: %s", this.cid(), msg)
 
@@ -398,7 +400,7 @@ func (this *service) onPublish(msg *message.PublishMessage) (err error) {
 	//   }
 
 	//   var subs []interface{}
-	var subs = make([]interface{}, 1, 1)
+	subs := _get_temp_subs()
 	err = this.topicsMgr.Subscribers(msg.Topic(), msg.QoS(), &subs, &this.qoss)
 	if err != nil {
 		glog.Errorf("(%s) Error retrieving subscribers list: %v", this.cid(), err)
@@ -492,12 +494,13 @@ func (this *service) onGroupPublish(msg *message.PublishMessage) (err error) {
 			continue
 		}
 
-		go this._process_group_message(topic, payload)
+		go this._publish_to_topic(topic, payload)
 	}
 
 	return
 }
 
+// 处理publish类型的消息，如果是特殊频道特殊处理，否则正常处理
 func (this *service) _process_publish(msg *message.PublishMessage) (err error) {
 	switch string(msg.Topic()) {
 	case config.Get("broadcast_channel"):
@@ -505,47 +508,49 @@ func (this *service) _process_publish(msg *message.PublishMessage) (err error) {
 	case config.Get("s_channel"):
 		go this.onReceiveBadge(msg)
 	default:
-		msg.SetPacketId(getRandPkgId())
+		msg.SetPacketId(GetRandPkgId())
 		go this.onPublish(msg)
 	}
-	//如果有err，把此条消息加入以topic划分的队列
-	//订阅话题的时候，先去topic对应的队列里筛查，如果有残留，先推
 	return
 }
 
-func (this *service) _process_group_message(topic string, payload []byte) {
-	tmp_msg := message.NewPublishMessage()
+//根据topic和payload 推送消息
+func (this *service) _publish_to_topic(topic string, payload []byte) {
+	tmp_msg := _get_tmp_msg()
 	tmp_msg.SetTopic([]byte(topic))
-	tmp_msg.SetPacketId(getRandPkgId())
 	tmp_msg.SetPayload(payload)
-	tmp_msg.SetQoS(message.QosAtLeastOnce)
 	this.onPublish(tmp_msg)
 }
 
+// 当某个topic被订阅，处理此topic所对应的、离线消息队列里的消息
 func (this *service) _process_offline_message(topic string) (err error) {
-	//   offline_msgs := OfflineTopicQueue[topic]
 	offline_msgs := getOfflineMsg(topic)
 	if offline_msgs == nil {
 		return nil
 	}
 
 	for _, payload := range offline_msgs {
-		this._process_group_message(topic, payload)
+		this._publish_to_topic(topic, payload)
 	}
 	OfflineTopicCleanProcessor <- topic
 	return nil
 }
 
-func getRandPkgId() uint16 {
+// 获取一个递增的pkgid
+func GetRandPkgId() uint16 {
 	PkgIdProcessor <- true
 	return <-PkgIdGenerator
 }
 
+// 判断消息是否已读
 func handlePendingMessage(msg *message.PublishMessage) {
+	// 如果QOS=0,则无需等待直接返回
 	if msg.QoS() == message.QosAtMostOnce {
 		return
 	}
 
+	// 将msg按照pkt_id，存入pending队列
+	// 如果2秒后msg仍然在队列中，说明未收到回包，需要将消息放到OfflineTopicQueueProcessor中处理
 	pkt_id := msg.PacketId()
 	PendingQueue[pkt_id] = msg
 
@@ -556,6 +561,7 @@ func handlePendingMessage(msg *message.PublishMessage) {
 	}
 }
 
+// 处理苹果设备的未读数，修改redis
 func handleBadge(account_id string, badge_message BadgeMessage) {
 	key := "badge_account:" + account_id
 	_, err := topics.RedisDo("set", key, badge_message.Data)
@@ -564,12 +570,27 @@ func handleBadge(account_id string, badge_message BadgeMessage) {
 	}
 }
 
+// 根据topic获取离线消息队列
+// 由于不能并发读写，所以要借助channel来实现
 func getOfflineMsg(topic string) (msg [][]byte) {
 	OfflineTopicGetProcessor <- topic
 	msg = <-OfflineTopicGetChannel
 	return
 }
 
+//根据pkt_id，将pending队列里的该条消息移除
 func _process_ack(pkg_id uint16) {
 	PendingQueue[pkg_id] = nil
+}
+
+// 从池子里获取一个长度为1的slice，用于填充订阅队列
+func _get_temp_subs() (subs []interface{}) {
+	subs = <-SubscribersSliceQueue
+	return
+}
+
+// 从池子里获取一个msg对象，用于打包
+func _get_tmp_msg() (msg *message.PublishMessage) {
+	msg = <-NewMessagesQueue
+	return
 }

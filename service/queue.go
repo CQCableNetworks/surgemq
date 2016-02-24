@@ -24,6 +24,9 @@ var (
 	PkgIdGenerator = make(chan uint16, 1024)
 	PkgId          = uint16(1)
 
+	NewMessagesQueue      = make(chan *message.PublishMessage, 2048)
+	SubscribersSliceQueue = make(chan []interface{}, 2048)
+
 	Max_message_queue int
 )
 
@@ -33,6 +36,21 @@ type ClientHash struct {
 }
 
 func init() {
+	go func() {
+		for {
+			SubscribersSliceQueue <- make([]interface{}, 1, 1)
+		}
+	}()
+
+	go func() {
+		for {
+			tmp_msg := message.NewPublishMessage()
+			tmp_msg.SetPacketId(GetRandPkgId())
+			tmp_msg.SetQoS(message.QosAtLeastOnce)
+			NewMessagesQueue <- tmp_msg
+		}
+	}()
+
 	go func() {
 		for {
 			select {

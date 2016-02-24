@@ -233,17 +233,18 @@ func (this *Server) Publish(msg *message.PublishMessage, onComplete OnCompleteFu
 		return err
 	}
 
-	if msg.Retain() {
-		if err = this.topicsMgr.Retain(msg); err != nil {
-			glog.Errorf("Error retaining message: %v", err)
-		}
-	}
+	//	if msg.Retain() {
+	//		if err = this.topicsMgr.Retain(msg); err != nil {
+	//			glog.Errorf("Error retaining message: %v", err)
+	//		}
+	//	}
 
 	if err = this.topicsMgr.Subscribers(msg.Topic(), msg.QoS(), &this.subs, &this.qoss); err != nil {
+		//   if err = this.topicsMgr.Subscribers(msg.Topic(), msg.QoS(), &this.subs, &this.qoss); err != nil {
 		return err
 	}
 
-	msg.SetRetain(false)
+	//   msg.SetRetain(false)
 
 	//glog.Debugf("(server) Publishing to topic %q and %d subscribers", string(msg.Topic()), len(this.subs))
 	for _, s := range this.subs {
