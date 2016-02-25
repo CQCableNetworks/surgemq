@@ -25,6 +25,12 @@ import (
 var (
 	bufcnt            int64
 	DefaultBufferSize int64
+
+	DeviceInBufferSize  int64
+	DeviceOutBufferSize int64
+
+	MasterInBufferSize  int64
+	MasterOutBufferSize int64
 )
 
 const (
@@ -86,10 +92,12 @@ func newBuffer(size int64) (*buffer, error) {
 	}
 
 	if !powerOfTwo64(size) {
+		fmt.Printf("Size must be power of two. Try %d.", roundUpPowerOfTwo64(size))
 		return nil, fmt.Errorf("Size must be power of two. Try %d.", roundUpPowerOfTwo64(size))
 	}
 
 	if size < 2*defaultReadBlockSize {
+		fmt.Printf("Size must at least be %d. Try %d.", 2*defaultReadBlockSize, 2*defaultReadBlockSize)
 		return nil, fmt.Errorf("Size must at least be %d. Try %d.", 2*defaultReadBlockSize, 2*defaultReadBlockSize)
 	}
 

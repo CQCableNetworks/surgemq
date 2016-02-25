@@ -364,7 +364,8 @@ func (this *Server) handleConnection(c io.Closer) (svc *service, err error) {
 		topicsMgr: this.topicsMgr,
 	}
 
-	c_hash := &ClientHash{Name: string(req.ClientId()), Conn: &conn}
+	c_id := string(req.ClientId())
+	c_hash := &ClientHash{Name: c_id, Conn: &conn}
 	ClientMapProcessor <- c_hash
 
 	err = this.getSession(svc, req, resp)
@@ -381,7 +382,7 @@ func (this *Server) handleConnection(c io.Closer) (svc *service, err error) {
 	svc.inStat.increment(int64(req.Len()))
 	svc.outStat.increment(int64(resp.Len()))
 
-	if err := svc.start(); err != nil {
+	if err := svc.start(c_id); err != nil {
 		svc.stop()
 		return nil, err
 	}

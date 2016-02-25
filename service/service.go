@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	//   "runtime/debug"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -125,20 +126,34 @@ type service struct {
 	rmsgs []*message.PublishMessage
 }
 
-func (this *service) start() error {
+func (this *service) start(client_id string) error {
 	var err error
 
 	//   debug.PrintStack()
 	// Create the incoming ring buffer
-	this.in, err = newBuffer(DefaultBufferSize)
-	if err != nil {
-		return err
-	}
+	// TODO: 如果是master_开头的，buffer大一些
+	if strings.Contains(client_id, "master") {
+		this.in, err = newBuffer(MasterInBufferSize)
+		if err != nil {
+			return err
+		}
 
-	// Create the outgoing ring buffer
-	this.out, err = newBuffer(DefaultBufferSize)
-	if err != nil {
-		return err
+		// Create the outgoing ring buffer
+		this.out, err = newBuffer(MasterOutBufferSize)
+		if err != nil {
+			return err
+		}
+	} else {
+		this.in, err = newBuffer(DeviceInBufferSize)
+		if err != nil {
+			return err
+		}
+
+		// Create the outgoing ring buffer
+		this.out, err = newBuffer(DeviceOutBufferSize)
+		if err != nil {
+			return err
+		}
 	}
 
 	// If this is a server

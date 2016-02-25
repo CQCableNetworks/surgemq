@@ -34,7 +34,8 @@ import (
 )
 
 var (
-	errDisconnect = errors.New("Disconnect")
+	errDisconnect  = errors.New("Disconnect")
+	MsgPendingTime time.Duration
 )
 
 // processor() reads messages from the incoming buffer and processes them
@@ -554,7 +555,7 @@ func handlePendingMessage(msg *message.PublishMessage) {
 	pkt_id := msg.PacketId()
 	PendingQueue[pkt_id] = msg
 
-	time.Sleep(2 * time.Second)
+	time.Sleep(time.Second * MsgPendingTime)
 	if PendingQueue[pkt_id] != nil {
 		PendingQueue[pkt_id] = nil
 		OfflineTopicQueueProcessor <- msg
