@@ -567,14 +567,14 @@ func (this *service) _publish_to_topic(topic string, payload []byte) {
 
 // 当某个topic被订阅，处理此topic所对应的、离线消息队列里的消息
 func (this *service) _process_offline_message(topic string) (err error) {
-	Log.Infoc(func() string {
-		return fmt.Sprintf("send offline msgs to topic: %s", topic)
-	})
-
 	offline_msgs := getOfflineMsg(topic)
 	if offline_msgs == nil {
 		return nil
 	}
+
+	Log.Infoc(func() string {
+		return fmt.Sprintf("send %d offline msgs to topic: %s", topic, len(offline_msgs))
+	})
 
 	for _, payload := range offline_msgs {
 		this._publish_to_topic(topic, payload)
