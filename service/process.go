@@ -573,7 +573,7 @@ func (this *service) _process_offline_message(topic string) (err error) {
 	}
 
 	Log.Infoc(func() string {
-		return fmt.Sprintf("send %d offline msgs to topic: %s", topic, len(offline_msgs))
+		return fmt.Sprintf("send %d offline msgs to topic: %s", len(offline_msgs), topic)
 	})
 
 	for _, payload := range offline_msgs {
