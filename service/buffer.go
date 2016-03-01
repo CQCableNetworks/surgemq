@@ -34,6 +34,7 @@ var (
 )
 
 const (
+	smallReadBlockSize    = 512
 	defaultReadBlockSize  = 8192
 	defaultWriteBlockSize = 8192
 )
@@ -80,6 +81,8 @@ type buffer struct {
 
 	cwait int64
 	pwait int64
+
+	readblocksize int
 }
 
 func newBuffer(size int64) (*buffer, error) {
@@ -96,22 +99,30 @@ func newBuffer(size int64) (*buffer, error) {
 		return nil, fmt.Errorf("Size must be power of two. Try %d.", roundUpPowerOfTwo64(size))
 	}
 
-	if size < 2*defaultReadBlockSize {
+	var readblocksize int
+	if size <= 8192 {
+		readblocksize = smallReadBlockSize
+	} else {
+		readblocksize = defaultReadBlockSize
+	}
+
+	if size < int64(2*readblocksize) {
 		fmt.Printf("Size must at least be %d. Try %d.", 2*defaultReadBlockSize, 2*defaultReadBlockSize)
 		return nil, fmt.Errorf("Size must at least be %d. Try %d.", 2*defaultReadBlockSize, 2*defaultReadBlockSize)
 	}
 
 	return &buffer{
-		id:    atomic.AddInt64(&bufcnt, 1),
-		buf:   make([]byte, size),
-		size:  size,
-		mask:  size - 1,
-		pseq:  newSequence(),
-		cseq:  newSequence(),
-		pcond: sync.NewCond(new(sync.Mutex)),
-		ccond: sync.NewCond(new(sync.Mutex)),
-		cwait: 0,
-		pwait: 0,
+		id:            atomic.AddInt64(&bufcnt, 1),
+		buf:           make([]byte, size),
+		size:          size,
+		mask:          size - 1,
+		pseq:          newSequence(),
+		cseq:          newSequence(),
+		readblocksize: readblocksize,
+		pcond:         sync.NewCond(new(sync.Mutex)),
+		ccond:         sync.NewCond(new(sync.Mutex)),
+		cwait:         0,
+		pwait:         0,
 	}, nil
 }
 
@@ -149,7 +160,7 @@ func (this *buffer) ReadFrom(r io.Reader) (int64, error) {
 			return total, io.EOF
 		}
 
-		start, cnt, err := this.waitForWriteSpace(defaultReadBlockSize)
+		start, cnt, err := this.waitForWriteSpace(this.readblocksize)
 		if err != nil {
 			return 0, err
 		}
