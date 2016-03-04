@@ -130,7 +130,6 @@ func (this *service) start(client_id string) error {
 
 	//   debug.PrintStack()
 	// Create the incoming ring buffer
-	// TODO: 如果是master_开头的，buffer大一些
 	Log.Debugc(func() string { return fmt.Sprintf("make new buffer for client: %s", client_id) })
 
 	if strings.Contains(client_id, "master") {
