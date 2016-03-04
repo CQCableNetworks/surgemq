@@ -55,8 +55,6 @@ func NewMXProvider() *mxTopics {
 	}
 }
 
-// FIXME 把clientid改为 某上层对象的指针，以便让它能断掉连接
-//TODO: 去掉树形结构，就留一个subscribe函数即可
 func (this *mxTopics) Subscribe(topic []byte, qos byte, sub interface{}, client_id string) (byte, error) {
 	topic_str := string(topic)
 	if !message.ValidQos(qos) {

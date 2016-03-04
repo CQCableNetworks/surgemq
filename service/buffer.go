@@ -34,7 +34,7 @@ var (
 )
 
 const (
-	smallReadBlockSize    = 512
+	smallRWBlockSize      = 512
 	defaultReadBlockSize  = 8192
 	defaultWriteBlockSize = 8192
 )
@@ -82,7 +82,8 @@ type buffer struct {
 	cwait int64
 	pwait int64
 
-	readblocksize int
+	readblocksize  int
+	writeblocksize int
 }
 
 func newBuffer(size int64) (*buffer, error) {
@@ -99,30 +100,33 @@ func newBuffer(size int64) (*buffer, error) {
 		return nil, fmt.Errorf("Size must be power of two. Try %d.", roundUpPowerOfTwo64(size))
 	}
 
-	var readblocksize int
+	var readblocksize, writeblocksize int
 	if size <= 8192 {
-		readblocksize = smallReadBlockSize
+		readblocksize = smallRWBlockSize
+		writeblocksize = smallRWBlockSize
 	} else {
 		readblocksize = defaultReadBlockSize
+		writeblocksize = defaultWriteBlockSize
 	}
 
 	if size < int64(2*readblocksize) {
-		fmt.Printf("Size must at least be %d. Try %d.", 2*defaultReadBlockSize, 2*defaultReadBlockSize)
-		return nil, fmt.Errorf("Size must at least be %d. Try %d.", 2*defaultReadBlockSize, 2*defaultReadBlockSize)
+		fmt.Printf("Size must at least be %d. Try %d.", 2*readblocksize, 2*readblocksize)
+		return nil, fmt.Errorf("Size must at least be %d. Try %d.", 2*readblocksize, 2*readblocksize)
 	}
 
 	return &buffer{
-		id:            atomic.AddInt64(&bufcnt, 1),
-		buf:           make([]byte, size),
-		size:          size,
-		mask:          size - 1,
-		pseq:          newSequence(),
-		cseq:          newSequence(),
-		readblocksize: readblocksize,
-		pcond:         sync.NewCond(new(sync.Mutex)),
-		ccond:         sync.NewCond(new(sync.Mutex)),
-		cwait:         0,
-		pwait:         0,
+		id:             atomic.AddInt64(&bufcnt, 1),
+		buf:            make([]byte, size),
+		size:           size,
+		mask:           size - 1,
+		pseq:           newSequence(),
+		cseq:           newSequence(),
+		readblocksize:  readblocksize,
+		writeblocksize: writeblocksize,
+		pcond:          sync.NewCond(new(sync.Mutex)),
+		ccond:          sync.NewCond(new(sync.Mutex)),
+		cwait:          0,
+		pwait:          0,
 	}, nil
 }
 
@@ -197,7 +201,7 @@ func (this *buffer) WriteTo(w io.Writer) (int64, error) {
 			return total, io.EOF
 		}
 
-		p, err := this.ReadPeek(defaultWriteBlockSize)
+		p, err := this.ReadPeek(this.writeblocksize)
 
 		// There's some data, let's process it first
 		if len(p) > 0 {

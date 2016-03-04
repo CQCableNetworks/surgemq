@@ -370,7 +370,9 @@ func (this *service) processSubscribe(msg *message.SubscribeMessage) error {
 		rqos, err := this.topicsMgr.Subscribe(t, qos[i], &this.onpub, this.sess.ID())
 		//     rqos, err := this.topicsMgr.Subscribe(t, qos[i], &this)
 		if err != nil {
+			//TODO: 是否需要调用this.stop()??
 			this.conn.Close()
+			//       this.stop()
 			return err
 		}
 		this.sess.AddTopic(string(t), qos[i])
