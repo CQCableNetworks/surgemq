@@ -100,7 +100,7 @@ type Server struct {
 	// is closed, then it's a signal for it to shutdown as well.
 	quit chan struct{}
 
-	ln net.Listener
+	ln     net.Listener
 	ssl_ln net.Listener
 
 	// A list of services created by the server. We keep track of them so we can
@@ -280,6 +280,7 @@ func (this *Server) Close() error {
 	// We then close the net.Listener, which will force Accept() to return if it's
 	// blocked waiting for new connections.
 	this.ln.Close()
+	this.ssl_ln.Close()
 
 	for _, svc := range this.svcs {
 		Log.Infoc(func() string { return fmt.Sprintf("Stopping service %d", svc.id) })
