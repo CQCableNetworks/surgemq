@@ -370,9 +370,7 @@ func (this *service) processSubscribe(msg *message.SubscribeMessage) error {
 		rqos, err := this.topicsMgr.Subscribe(t, qos[i], &this.onpub, this.sess.ID())
 		//     rqos, err := this.topicsMgr.Subscribe(t, qos[i], &this)
 		if err != nil {
-			//TODO: 是否需要调用this.stop()??
-			this.conn.Close()
-			//       this.stop()
+			this.stop()
 			return err
 		}
 		this.sess.AddTopic(string(t), qos[i])
@@ -480,6 +478,7 @@ func (this *service) onReceiveBadge(msg *message.PublishMessage) (err error) {
 	datas := strings.Split(string(msg.Payload()), ":")
 	//   datas := strings.Split(fmt.Sprintf("%s", msg.Payload()), ":")
 	if len(datas) != 2 {
+		Log.Errorc(func() string { return fmt.Sprintf("invalid message payload: %s", msg.Payload()) })
 		return errors.New(fmt.Sprintf("invalid message payload: %s", msg.Payload()))
 	}
 
@@ -515,7 +514,7 @@ func (this *service) onGroupPublish(msg *message.PublishMessage) (err error) {
 	)
 
 	Log.Infoc(func() string {
-		return fmt.Sprintln("receive group msgs.")
+		return "receive group msgs.\n"
 	})
 
 	err = ffjson.Unmarshal(msg.Payload(), &broadcast_msg)
