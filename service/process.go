@@ -435,6 +435,8 @@ func (this *service) onPublish(msg *message.PublishMessage) (err error) {
 
 	//   var subs []interface{}
 	subs := _get_temp_subs()
+	defer _return_temp_subs(subs)
+
 	err = this.topicsMgr.Subscribers(msg.Topic(), msg.QoS(), &subs, &this.qoss)
 	if err != nil {
 		Log.Errorc(func() string { return fmt.Sprintf("(%s) Error retrieving subscribers list: %v", this.cid(), err) })
@@ -642,7 +644,28 @@ func _process_ack(pkg_id uint16) {
 
 // 从池子里获取一个长度为1的slice，用于填充订阅队列
 func _get_temp_subs() (subs []interface{}) {
-	subs = <-SubscribersSliceQueue
+	select {
+	case subs = <-SubscribersSliceQueue:
+		// 成功从缓存池里拿到，直接返回
+	default:
+		// 拿不到，说明池子里没对象了，就地创建一个
+		subs = make([]interface{}, 1, 1)
+	}
+	return
+}
+
+// 把subs返还池子
+func _return_temp_subs(subs []interface{}) {
+	subs[0] = nil
+	select {
+	case SubscribersSliceQueue <- subs:
+		// 成功返还，什么都不做
+	default:
+		subs = nil
+		Log.Errorc(func() string {
+			return "return temp subs failed, may be the SubscribersSliceQueue is full!"
+		})
+	}
 	return
 }
 
