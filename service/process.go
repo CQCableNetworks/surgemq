@@ -436,6 +436,7 @@ func (this *service) onPublish(msg *message.PublishMessage) (err error) {
 	//   var subs []interface{}
 	subs := _get_temp_subs()
 	defer _return_temp_subs(subs)
+	defer _return_tmp_msg(msg)
 
 	err = this.topicsMgr.Subscribers(msg.Topic(), msg.QoS(), &subs, &this.qoss)
 	if err != nil {
@@ -575,13 +576,18 @@ func (this *service) _process_offline_message(topic string) (err error) {
 		return nil
 	}
 
+	n := 0
+	for _, payload := range offline_msgs {
+		if payload != nil {
+			this._publish_to_topic(topic, payload)
+			n++
+		}
+	}
+
 	Log.Infoc(func() string {
-		return fmt.Sprintf("send %d offline msgs to topic: %s", len(offline_msgs), topic)
+		return fmt.Sprintf("send %d offline msgs to topic: %s", n, topic)
 	})
 
-	for _, payload := range offline_msgs {
-		this._publish_to_topic(topic, payload)
-	}
 	OfflineTopicCleanProcessor <- topic
 	return nil
 }
@@ -671,6 +677,23 @@ func _return_temp_subs(subs []interface{}) {
 
 // 从池子里获取一个msg对象，用于打包
 func _get_tmp_msg() (msg *message.PublishMessage) {
-	msg = <-NewMessagesQueue
+	select {
+	case msg = <-NewMessagesQueue:
+		// 成功取到msg，什么都不做
+	default:
+		msg = message.NewPublishMessage()
+		msg.SetPacketId(GetRandPkgId())
+		msg.SetQoS(message.QosAtLeastOnce)
+	}
+
 	return
+}
+
+func _return_tmp_msg(msg *message.PublishMessage) {
+	select {
+	case NewMessagesQueue <- msg:
+		//成功还回去了，什么都不做
+	default:
+		msg = nil
+	}
 }

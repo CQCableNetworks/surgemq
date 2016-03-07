@@ -10,7 +10,7 @@ var (
 	PendingQueue = make([]*message.PublishMessage, 65536, 65536)
 	//   PendingProcessor = make(chan *message.PublishMessage, 65536)
 
-	OfflineTopicQueue          = make(map[string][][]byte)
+	OfflineTopicMap            = make(map[string]*OfflineTopicQueue)
 	OfflineTopicQueueProcessor = make(chan *message.PublishMessage, 2048)
 	OfflineTopicCleanProcessor = make(chan string, 2048)
 
@@ -37,6 +37,52 @@ type ClientHash struct {
 	Conn *net.Conn
 }
 
+// 定义一个离线消息队列的结构体，保存一个二维byte数组和一个位置
+type OfflineTopicQueue struct {
+	q      [][]byte
+	pos    int
+	length int
+	clean  bool
+}
+
+func NewOfflineTopicQueue(length int) (q *OfflineTopicQueue) {
+	q = &OfflineTopicQueue{
+		make([][]byte, length, length),
+		0,
+		length,
+		true,
+	}
+
+	return q
+}
+
+// 向队列中添加消息
+func (this *OfflineTopicQueue) Add(msg_bytes []byte) {
+	this.q[this.pos] = msg_bytes
+	this.pos = (this.pos + 1) % this.length
+	if this.clean {
+		this.clean = false
+	}
+}
+
+// 清除队列中已有消息
+func (this *OfflineTopicQueue) Clean() {
+	this.q = this.q[:0]
+	this.q = this.q[:Max_message_queue]
+	this.pos = 0
+	this.clean = true
+}
+
+func (this *OfflineTopicQueue) GetAll() (msg_bytes [][]byte) {
+	if this.clean {
+		return nil
+	} else {
+		msg_bytes = this.q[this.pos:this.length]
+		msg_bytes = append(msg_bytes, this.q[0:this.pos-1]...)
+		return msg_bytes
+	}
+}
+
 func init() {
 	go func() {
 		for i := 0; i < 2048; i++ {
@@ -45,7 +91,7 @@ func init() {
 	}()
 
 	go func() {
-		for {
+		for i := 0; i < 2048; i++ {
 			tmp_msg := message.NewPublishMessage()
 			tmp_msg.SetPacketId(GetRandPkgId())
 			tmp_msg.SetQoS(message.QosAtLeastOnce)
@@ -57,33 +103,33 @@ func init() {
 		for {
 			select {
 			case topic := <-OfflineTopicGetProcessor:
-				OfflineTopicGetChannel <- OfflineTopicQueue[topic]
+				q := OfflineTopicMap[topic]
+				if q == nil {
+					q = NewOfflineTopicQueue(Max_message_queue)
+					OfflineTopicMap[topic] = q
+				}
+				OfflineTopicGetChannel <- q.GetAll()
 			case topic := <-OfflineTopicCleanProcessor:
 				Log.Debugc(func() string {
 					return fmt.Sprintf("clean offlie topic queue: %s", topic)
 				})
 
-				OfflineTopicQueue[topic] = nil
-			case msg := <-OfflineTopicQueueProcessor:
-				topic := string(msg.Topic())
-				new_msg_queue := append(OfflineTopicQueue[topic], msg.Payload())
-				length := len(new_msg_queue)
-				if length > Max_message_queue {
-					Log.Debugc(func() string {
-						return fmt.Sprintf("add offline message to the topic: %s, and remove %d old messages.",
-							topic,
-							length-Max_message_queue,
-						)
-					})
-
-					OfflineTopicQueue[topic] = new_msg_queue[length-Max_message_queue:]
-				} else {
-					Log.Debugc(func() string {
-						return fmt.Sprintf("add offline message to the topic: %s", topic)
-					})
-
-					OfflineTopicQueue[topic] = new_msg_queue
+				q := OfflineTopicMap[topic]
+				if q != nil {
+					q.Clean()
 				}
+			case msg := <-OfflineTopicQueueProcessor:
+				//         _ = msg
+				topic := string(msg.Topic())
+				q := OfflineTopicMap[topic]
+				if q == nil {
+					q = NewOfflineTopicQueue(Max_message_queue)
+					OfflineTopicMap[topic] = q
+				}
+				q.Add(msg.Payload())
+				Log.Debugc(func() string {
+					return fmt.Sprintf("add offline message to the topic: %s", topic)
+				})
 
 			case client := <-ClientMapProcessor:
 				client_id := client.Name
