@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/surgemq/message"
 	"net"
+	//   "sync"
 )
 
 var (
@@ -43,6 +44,7 @@ type OfflineTopicQueue struct {
 	pos    int
 	length int
 	clean  bool
+	//   lock  *sync.RWMutex
 }
 
 func NewOfflineTopicQueue(length int) (q *OfflineTopicQueue) {
@@ -51,29 +53,41 @@ func NewOfflineTopicQueue(length int) (q *OfflineTopicQueue) {
 		0,
 		length,
 		true,
+		//     new(sync.RWMutex),
 	}
 
 	return q
 }
 
 // 向队列中添加消息
+//NOTE 因为目前是在channel中操作，所以无需加锁。如果需要并发访问，则需要加锁了。
 func (this *OfflineTopicQueue) Add(msg_bytes []byte) {
+	//   this.lock.Lock()
 	this.q[this.pos] = msg_bytes
-	this.pos = (this.pos + 1) % this.length
+	this.pos++
+
+	if this.pos >= this.length {
+		this.pos = 0
+	}
+
 	if this.clean {
 		this.clean = false
 	}
+	//   this.lock.Unlock()
 }
 
 // 清除队列中已有消息
 func (this *OfflineTopicQueue) Clean() {
+	//   this.lock.Lock()
 	this.q = this.q[:0]
 	this.q = this.q[:Max_message_queue]
 	this.pos = 0
 	this.clean = true
+	//   this.lock.Unlock()
 }
 
 func (this *OfflineTopicQueue) GetAll() (msg_bytes [][]byte) {
+	//   this.lock.RLock()
 	if this.clean {
 		return nil
 	} else {
@@ -81,6 +95,7 @@ func (this *OfflineTopicQueue) GetAll() (msg_bytes [][]byte) {
 		msg_bytes = append(msg_bytes, this.q[0:this.pos-1]...)
 		return msg_bytes
 	}
+	//   this.lock.RUnlock()
 }
 
 func init() {
