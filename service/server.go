@@ -378,8 +378,8 @@ func (this *Server) handleConnection(c io.Closer) (svc *service, err error) {
 	}
 
 	c_id := string(req.ClientId())
-	c_hash := &ClientHash{Name: c_id, Conn: &conn}
-	ClientMapProcessor <- c_hash
+	c_hash := ClientHash{Name: c_id, Conn: &conn}
+	ClientMapProcessor <- &c_hash
 
 	err = this.getSession(svc, req, resp)
 	if err != nil {

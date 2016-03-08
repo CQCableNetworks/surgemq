@@ -679,6 +679,7 @@ func _return_temp_subs(subs []interface{}) {
 func _get_tmp_msg() (msg *message.PublishMessage) {
 	select {
 	case msg = <-NewMessagesQueue:
+		msg.SetPacketId(GetRandPkgId())
 		// 成功取到msg，什么都不做
 	default:
 		msg = message.NewPublishMessage()

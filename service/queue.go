@@ -108,7 +108,6 @@ func init() {
 	go func() {
 		for i := 0; i < 2048; i++ {
 			tmp_msg := message.NewPublishMessage()
-			tmp_msg.SetPacketId(GetRandPkgId())
 			tmp_msg.SetQoS(message.QosAtLeastOnce)
 			NewMessagesQueue <- tmp_msg
 		}
