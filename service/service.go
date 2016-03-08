@@ -277,7 +277,7 @@ func (this *service) stop() {
 	this.conn = nil
 	this.in = nil
 	this.out = nil
-	ClientMap[this.sess.ID()] = nil
+	ClientMapCleanProcessor <- this.sess.ID()
 }
 
 func (this *service) publish(msg *message.PublishMessage, onComplete OnCompleteFunc) error {
