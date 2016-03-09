@@ -120,9 +120,9 @@ type service struct {
 	intmp  []byte
 	outtmp []byte
 
-	subs  []interface{}
-	qoss  []byte
-	rmsgs []*message.PublishMessage
+	//   subs  []interface{}
+	//   qoss  []byte
+	//   rmsgs []*message.PublishMessage
 }
 
 func (this *service) start(client_id string) error {
@@ -226,6 +226,7 @@ func (this *service) stop() {
 	// Close the network connection
 	if this.conn != nil {
 		Log.Debugc(func() string { return fmt.Sprintf("(%s) closing this.conn", this.cid()) })
+		ClientMapCleanProcessor <- this.sess.ID()
 		this.conn.Close()
 	}
 
@@ -277,7 +278,6 @@ func (this *service) stop() {
 	this.conn = nil
 	this.in = nil
 	this.out = nil
-	ClientMapCleanProcessor <- this.sess.ID()
 }
 
 func (this *service) publish(msg *message.PublishMessage, onComplete OnCompleteFunc) error {

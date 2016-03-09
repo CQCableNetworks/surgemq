@@ -363,8 +363,6 @@ func (this *service) processSubscribe(msg *message.SubscribeMessage) error {
 	topics := msg.Topics()
 	qos := msg.Qos()
 
-	this.rmsgs = this.rmsgs[0:0]
-
 	//   fmt.Printf("this.id: %d,  this.sess.ID(): %s\n", this.id, this.cid())
 	for i, t := range topics {
 		rqos, err := this.topicsMgr.Subscribe(t, qos[i], &this.onpub, this.sess.ID())
@@ -376,11 +374,6 @@ func (this *service) processSubscribe(msg *message.SubscribeMessage) error {
 		this.sess.AddTopic(string(t), qos[i])
 
 		retcodes = append(retcodes, rqos)
-
-		// yeah I am not checking errors here. If there's an error we don't want the
-		// subscription to stop, just let it go.
-		this.topicsMgr.Retained(t, &this.rmsgs)
-		//     Log.Debugc(func() string{ return fmt.Sprintf("(%s) topic = %s, retained count = %d", this.cid(), string(t), len(this.rmsgs))})
 	}
 
 	if err := resp.AddReturnCodes(retcodes); err != nil {
@@ -389,15 +382,6 @@ func (this *service) processSubscribe(msg *message.SubscribeMessage) error {
 
 	if _, err := this.writeMessage(resp); err != nil {
 		return err
-	}
-
-	for _, rm := range this.rmsgs {
-		if err := this.publish(rm, nil); err != nil {
-			Log.Errorc(func() string {
-				return fmt.Sprintf("service/processSubscribe: Error publishing retained message: %v", err)
-			})
-			return err
-		}
 	}
 
 	for _, t := range topics {
@@ -438,7 +422,7 @@ func (this *service) onPublish(msg *message.PublishMessage) (err error) {
 	defer _return_temp_subs(subs)
 	defer _return_tmp_msg(msg)
 
-	err = this.topicsMgr.Subscribers(msg.Topic(), msg.QoS(), &subs, &this.qoss)
+	err = this.topicsMgr.Subscribers(msg.Topic(), msg.QoS(), subs, nil)
 	if err != nil {
 		Log.Errorc(func() string { return fmt.Sprintf("(%s) Error retrieving subscribers list: %v", this.cid(), err) })
 		return err
@@ -450,7 +434,7 @@ func (this *service) onPublish(msg *message.PublishMessage) (err error) {
 	//   fmt.Printf("value: %v\n", config.GetModel())
 	go handlePendingMessage(msg)
 
-	for _, s := range subs {
+	for _, s := range *subs {
 		if s != nil {
 			fn, ok := s.(*OnPublishFunc)
 			if !ok {
@@ -649,25 +633,26 @@ func _process_ack(pkg_id uint16) {
 }
 
 // 从池子里获取一个长度为1的slice，用于填充订阅队列
-func _get_temp_subs() (subs []interface{}) {
+func _get_temp_subs() (subs *[]interface{}) {
 	select {
 	case subs = <-SubscribersSliceQueue:
 		// 成功从缓存池里拿到，直接返回
 	default:
 		// 拿不到，说明池子里没对象了，就地创建一个
-		subs = make([]interface{}, 1, 1)
+		sub_p := make([]interface{}, 1, 1)
+		return &sub_p
 	}
 	return
 }
 
 // 把subs返还池子
-func _return_temp_subs(subs []interface{}) {
-	subs[0] = nil
+func _return_temp_subs(subs *[]interface{}) {
+	(*subs)[0] = nil
 	select {
 	case SubscribersSliceQueue <- subs:
 		// 成功返还，什么都不做
 	default:
-		subs = nil
+		*subs = nil
 		Log.Errorc(func() string {
 			return "return temp subs failed, may be the SubscribersSliceQueue is full!"
 		})

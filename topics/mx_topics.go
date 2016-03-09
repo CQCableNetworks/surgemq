@@ -6,7 +6,6 @@ import (
 	//   "github.com/nagae-memooff/config"
 	//   "github.com/nagae-memooff/surgemq/topics"
 	//   "github.com/nagae-memooff/surgemq/service"
-	"github.com/surge/glog"
 	"github.com/surgemq/message"
 	"sync"
 )
@@ -78,11 +77,10 @@ func (this *mxTopics) Subscribe(topic []byte, qos byte, sub interface{}, client_
 
 func (this *mxTopics) Unsubscribe(topic []byte, sub interface{}) error {
 	this.smu.Lock()
-	defer this.smu.Unlock()
-
 	this.subscriber[string(topic)] = nil
+	this.smu.Unlock()
+
 	return nil
-	//   return this.sroot.sremove(topic, sub)
 }
 
 // Returned values will be invalidated by the next Subscribers call
@@ -92,9 +90,8 @@ func (this *mxTopics) Subscribers(topic []byte, qos byte, subs *[]interface{}, q
 	}
 
 	this.smu.RLock()
-	defer this.smu.RUnlock()
-
 	(*subs)[0] = this.subscriber[string(topic)]
+	this.smu.RUnlock()
 	//   *qoss = (*qoss)[0:0]
 	return nil
 }
@@ -137,7 +134,7 @@ func GetUserTopic(client_id string) (topic string) {
 	key := "channel:" + client_id
 	data, err := RedisDo("get", key)
 	if err != nil {
-		glog.Errorln(err)
+		fmt.Println(err)
 		topic = ""
 		return
 	}
@@ -148,7 +145,6 @@ func GetUserTopic(client_id string) (topic string) {
 	}
 
 	topic = "/u/" + data
-	//   glog.Errorln(Channelcache)
 	cmux.Lock()
 	Channelcache[client_id] = topic
 	cmux.Unlock()
@@ -158,18 +154,18 @@ func GetUserTopic(client_id string) (topic string) {
 func LoadChannelCache() {
 	client_ids, channel_keys, err := GetClientIDandChannels()
 	if err != nil {
-		glog.Errorln(err)
+		fmt.Println(err)
 		return
 	}
 
 	channels, err := RedisDoGetMulti("mget", channel_keys...)
 	if err != nil {
-		glog.Errorln(err)
+		fmt.Println(err)
 		return
 	}
 
 	if len(channels) != len(channel_keys) {
-		glog.Errorln("长度不一致，不缓存了！")
+		fmt.Println("长度不一致，不缓存了！")
 	} else {
 		for i := 0; i < len(channels); i++ {
 			Channelcache[client_ids[i]] = "/u/" + channels[i]

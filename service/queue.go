@@ -28,7 +28,7 @@ var (
 	PkgId          = uint16(1)
 
 	NewMessagesQueue      = make(chan *message.PublishMessage, 2048)
-	SubscribersSliceQueue = make(chan []interface{}, 2048)
+	SubscribersSliceQueue = make(chan *[]interface{}, 2048)
 
 	Max_message_queue int
 )
@@ -79,8 +79,8 @@ func (this *OfflineTopicQueue) Add(msg_bytes []byte) {
 // 清除队列中已有消息
 func (this *OfflineTopicQueue) Clean() {
 	//   this.lock.Lock()
-	this.q = this.q[:0]
-	this.q = this.q[:Max_message_queue]
+	this.q = nil
+	this.q = make([][]byte, this.length, this.length)
 	this.pos = 0
 	this.clean = true
 	//   this.lock.Unlock()
@@ -101,7 +101,13 @@ func (this *OfflineTopicQueue) GetAll() (msg_bytes [][]byte) {
 func init() {
 	go func() {
 		for i := 0; i < 2048; i++ {
-			SubscribersSliceQueue <- make([]interface{}, 1, 1)
+			sub_p := make([]interface{}, 1, 1)
+			select {
+			case SubscribersSliceQueue <- &sub_p:
+			default:
+				sub_p = nil
+				return
+			}
 		}
 	}()
 
@@ -109,7 +115,13 @@ func init() {
 		for i := 0; i < 2048; i++ {
 			tmp_msg := message.NewPublishMessage()
 			tmp_msg.SetQoS(message.QosAtLeastOnce)
-			NewMessagesQueue <- tmp_msg
+
+			select {
+			case NewMessagesQueue <- tmp_msg:
+			default:
+				tmp_msg = nil
+				return
+			}
 		}
 	}()
 
@@ -119,10 +131,10 @@ func init() {
 			case topic := <-OfflineTopicGetProcessor:
 				q := OfflineTopicMap[topic]
 				if q == nil {
-					q = NewOfflineTopicQueue(Max_message_queue)
-					OfflineTopicMap[topic] = q
+					OfflineTopicGetChannel <- nil
+				} else {
+					OfflineTopicGetChannel <- q.GetAll()
 				}
-				OfflineTopicGetChannel <- q.GetAll()
 			case topic := <-OfflineTopicCleanProcessor:
 				Log.Debugc(func() string {
 					return fmt.Sprintf("clean offlie topic queue: %s", topic)
