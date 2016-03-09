@@ -506,7 +506,7 @@ func (this *service) onReceiveBadge(msg *message.PublishMessage) (err error) {
 	}
 	//   Log.Infoc(func() string{ return fmt.Sprintf("badge: %v, type: %T\n", badge_message.Data, badge_message.Data)})
 
-	go handleBadge(account_id, badge_message)
+	go handleBadge(account_id, &badge_message)
 	return
 }
 
@@ -621,7 +621,7 @@ func handlePendingMessage(msg *message.PublishMessage) {
 }
 
 // 处理苹果设备的未读数，修改redis
-func handleBadge(account_id string, badge_message BadgeMessage) {
+func handleBadge(account_id string, badge_message *BadgeMessage) {
 	key := "badge_account:" + account_id
 	_, err := topics.RedisDo("set", key, badge_message.Data)
 	if err != nil {
