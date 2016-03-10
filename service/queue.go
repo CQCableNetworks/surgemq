@@ -92,7 +92,7 @@ func (this *OfflineTopicQueue) GetAll() (msg_bytes [][]byte) {
 		return nil
 	} else {
 		msg_bytes = this.q[this.pos:this.length]
-		msg_bytes = append(msg_bytes, this.q[0:this.pos-1]...)
+		msg_bytes = append(msg_bytes, this.q[0:this.pos]...)
 		return msg_bytes
 	}
 	//   this.lock.RUnlock()
