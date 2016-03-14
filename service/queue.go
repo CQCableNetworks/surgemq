@@ -173,7 +173,9 @@ func init() {
 
 			case client_id := <-ClientMapCleanProcessor:
 				old_conn := ClientMap[client_id]
-				(*old_conn).Close()
+				if old_conn != nil {
+					(*old_conn).Close()
+				}
 				ClientMap[client_id] = nil
 			case _ = <-PkgIdProcessor:
 				PkgIdGenerator <- PkgId

@@ -202,10 +202,12 @@ func (this *service) processIncoming(msg message.Message) error {
 
 	case *message.PingreqMessage:
 		// For PINGREQ message, we should send back PINGRESP
+		//     Log.Debugc(func() string { return fmt.Sprintf("(%s) receive pingreq.", this.cid()) })
 		resp := message.NewPingrespMessage()
 		_, err = this.writeMessage(resp)
 
 	case *message.PingrespMessage:
+		//     Log.Debugc(func() string { return fmt.Sprintf("(%s) receive pingresp.", this.cid()) })
 		this.sess.Pingack.Ack(msg)
 		this.processAcked(this.sess.Pingack)
 
