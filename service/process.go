@@ -23,6 +23,7 @@ import (
 	"io"
 	"reflect"
 	"strings"
+	"sync"
 	"time"
 
 	//   "runtime/debug"
@@ -35,6 +36,7 @@ import (
 var (
 	errDisconnect  = errors.New("Disconnect")
 	MsgPendingTime time.Duration
+	counter_mux    sync.Mutex
 )
 
 // processor() reads messages from the incoming buffer and processes them
@@ -580,8 +582,11 @@ func (this *service) _process_offline_message(topic string) (err error) {
 
 // 获取一个递增的pkgid
 func GetRandPkgId() uint16 {
-	PkgIdProcessor <- true
-	return <-PkgIdGenerator
+	counter_mux.Lock()
+	defer counter_mux.Unlock()
+	PkgId++
+
+	return PkgId
 }
 
 // 判断消息是否已读

@@ -23,9 +23,7 @@ var (
 	ClientMapProcessor      = make(chan *ClientHash, 1024)
 	ClientMapCleanProcessor = make(chan string)
 
-	PkgIdProcessor = make(chan bool, 1024)
-	PkgIdGenerator = make(chan uint16, 1024)
-	PkgId          = uint16(1)
+	PkgId = uint16(1)
 
 	NewMessagesQueue      = make(chan *message.PublishMessage, 2048)
 	SubscribersSliceQueue = make(chan *[]interface{}, 2048)
@@ -177,9 +175,6 @@ func init() {
 					(*old_conn).Close()
 				}
 				ClientMap[client_id] = nil
-			case _ = <-PkgIdProcessor:
-				PkgIdGenerator <- PkgId
-				PkgId++
 			}
 		}
 	}()
