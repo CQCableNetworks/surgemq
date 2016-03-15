@@ -61,6 +61,10 @@ func NewOfflineTopicQueue(length int) (q *OfflineTopicQueue) {
 //NOTE 因为目前是在channel中操作，所以无需加锁。如果需要并发访问，则需要加锁了。
 func (this *OfflineTopicQueue) Add(msg_bytes []byte) {
 	//   this.lock.Lock()
+	if this.q == nil {
+		this.q = make([][]byte, this.length, this.length)
+	}
+
 	this.q[this.pos] = msg_bytes
 	this.pos++
 
@@ -78,7 +82,6 @@ func (this *OfflineTopicQueue) Add(msg_bytes []byte) {
 func (this *OfflineTopicQueue) Clean() {
 	//   this.lock.Lock()
 	this.q = nil
-	this.q = make([][]byte, this.length, this.length)
 	this.pos = 0
 	this.clean = true
 	//   this.lock.Unlock()
