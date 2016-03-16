@@ -169,9 +169,9 @@ func init() {
 				ClientMap[client_id] = client_conn
 
 			case client_id := <-ClientMapCleanProcessor:
-				old_conn := *ClientMap[client_id]
+				old_conn := ClientMap[client_id]
 				if old_conn != nil {
-					old_conn.Close()
+					(*old_conn).Close()
 					delete(ClientMap, client_id)
 				}
 			}
