@@ -151,7 +151,7 @@ func (this *service) processIncoming(msg message.Message) error {
 		//     Log.Errorc(func() string{ return fmt.Sprintf("this.subs is: %v,  count is %d, msg_type is %T", this.subs, len(this.subs), msg)})
 		// For PUBACK message, it means QoS 1, we should send to ack queue
 		//     Log.Errorc(func() string{ return fmt.Sprintf("\n%T:%d==========\nmsg is %v\n=====================", *msg, msg.PacketId(), *msg)})
-		go _process_ack(msg.PacketId())
+		go this._process_ack(msg.PacketId())
 		this.sess.Pub1ack.Ack(msg)
 		this.processAcked(this.sess.Pub1ack)
 
@@ -437,7 +437,7 @@ func (this *service) onPublish(msg *message.PublishMessage) (err error) {
 
 	//   Log.Errorc(func() string{ return fmt.Sprintf("(%s) Publishing to topic %q and %d subscribers", this.cid(), string(msg.Topic()), len(this.subs))})
 	//   fmt.Printf("value: %v\n", config.GetModel())
-	go handlePendingMessage(msg)
+	go this.handlePendingMessage(msg)
 
 	for _, s := range subs {
 		if s != nil {
@@ -495,7 +495,7 @@ func (this *service) onReceiveBadge(msg *message.PublishMessage) (err error) {
 	}
 	//   Log.Infoc(func() string{ return fmt.Sprintf("badge: %v, type: %T\n", badge_message.Data, badge_message.Data)})
 
-	go handleBadge(account_id, &badge_message)
+	go this.handleBadge(account_id, &badge_message)
 	return
 }
 
@@ -550,7 +550,7 @@ func (this *service) _process_publish(msg *message.PublishMessage) (err error) {
 //根据topic和payload 推送消息
 func (this *service) _publish_to_topic(topic string, payload []byte) {
 	Log.Debugc(func() string {
-		return fmt.Sprintf("send msg to topic: %s", topic)
+		return fmt.Sprintf("(%s) send msg to topic: %s", this.cid(), topic)
 	})
 	tmp_msg := _get_tmp_msg()
 	tmp_msg.SetTopic([]byte(topic))
@@ -574,7 +574,7 @@ func (this *service) _process_offline_message(topic string) (err error) {
 	}
 
 	Log.Infoc(func() string {
-		return fmt.Sprintf("send %d offline msgs to topic: %s", n, topic)
+		return fmt.Sprintf("(%s) send %d offline msgs to topic: %s", this.cid(), n, topic)
 	})
 
 	OfflineTopicCleanProcessor <- topic
@@ -591,7 +591,7 @@ func GetRandPkgId() uint16 {
 }
 
 // 判断消息是否已读
-func handlePendingMessage(msg *message.PublishMessage) {
+func (this *service) handlePendingMessage(msg *message.PublishMessage) {
 	// 如果QOS=0,则无需等待直接返回
 	if msg.QoS() == message.QosAtMostOnce {
 		return
@@ -605,7 +605,7 @@ func handlePendingMessage(msg *message.PublishMessage) {
 	time.Sleep(time.Second * MsgPendingTime)
 	if PendingQueue[pkt_id] != nil {
 		Log.Debugc(func() string {
-			return fmt.Sprintf("receive ack timeout. send msg to offline msg queue.topic: %s", msg.Topic())
+			return fmt.Sprintf("(%s) receive ack timeout. send msg to offline msg queue.topic: %s", this.cid(), msg.Topic())
 		})
 		PendingQueue[pkt_id] = nil
 		OfflineTopicQueueProcessor <- msg
@@ -613,12 +613,12 @@ func handlePendingMessage(msg *message.PublishMessage) {
 }
 
 // 处理苹果设备的未读数，修改redis
-func handleBadge(account_id string, badge_message *BadgeMessage) {
+func (this *service) handleBadge(account_id string, badge_message *BadgeMessage) {
 	key := "badge_account:" + account_id
 	_, err := topics.RedisDo("set", key, badge_message.Data)
 	if err != nil {
 		Log.Errorc(func() string {
-			return fmt.Sprintf("can't set badge! account_id: %s, badge: %v", account_id, badge_message)
+			return fmt.Sprintf("(%s) can't set badge! account_id: %s, badge: %v", this.cid(), account_id, badge_message)
 		})
 	}
 }
@@ -640,11 +640,11 @@ func getOfflineMsg(topic string) (msgs [][]byte) {
 }
 
 //根据pkt_id，将pending队列里的该条消息移除
-func _process_ack(pkg_id uint16) {
+func (this *service) _process_ack(pkg_id uint16) {
 	PendingQueue[pkg_id] = nil
 
 	Log.Debugc(func() string {
-		return fmt.Sprintf("receive ack, remove msg from pending queue: %d", pkg_id)
+		return fmt.Sprintf("(%s) receive ack, remove msg from pending queue: %d", this.cid(), pkg_id)
 	})
 }
 
