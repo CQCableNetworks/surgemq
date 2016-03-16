@@ -88,6 +88,8 @@ func (this *OfflineTopicQueue) GetAll() (msg_bytes [][]byte) {
 	if this.clean {
 		return nil
 	} else {
+		msg_bytes = make([][]byte, this.length, this.length)
+
 		msg_bytes = this.q[this.pos:this.length]
 		msg_bytes = append(msg_bytes, this.q[0:this.pos]...)
 		return msg_bytes
@@ -158,7 +160,8 @@ func init() {
 				if ClientMap[client_id] != nil {
 					old_conn := ClientMap[client_id]
 					(*old_conn).Close()
-					ClientMap[client_id] = nil
+					delete(ClientMap, client_id)
+
 					Log.Debugc(func() string {
 						return fmt.Sprintf("client connected with same client_id: %s. close old connection.", client_id)
 					})
@@ -169,8 +172,8 @@ func init() {
 				old_conn := ClientMap[client_id]
 				if old_conn != nil {
 					(*old_conn).Close()
+					delete(ClientMap, client_id)
 				}
-				ClientMap[client_id] = nil
 			}
 		}
 	}()

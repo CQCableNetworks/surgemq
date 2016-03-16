@@ -625,18 +625,18 @@ func handleBadge(account_id string, badge_message *BadgeMessage) {
 
 // 根据topic获取离线消息队列
 // 由于不能并发读写，所以要借助channel来实现
-func getOfflineMsg(topic string) (msg [][]byte) {
+func getOfflineMsg(topic string) (msgs [][]byte) {
 	OfflieTopicRWmux.RLock()
-	defer OfflieTopicRWmux.RUnlock()
-
 	q := OfflineTopicMap[topic]
+	OfflieTopicRWmux.RUnlock()
+
 	if q == nil {
-		msg = nil
+		msgs = nil
 	} else {
-		msg = q.GetAll()
+		msgs = q.GetAll()
 	}
 
-	return msg
+	return msgs
 }
 
 //根据pkt_id，将pending队列里的该条消息移除
