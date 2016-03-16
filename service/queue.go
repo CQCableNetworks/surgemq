@@ -15,10 +15,6 @@ var (
 	OfflineTopicQueueProcessor = make(chan *message.PublishMessage, 2048)
 	OfflineTopicCleanProcessor = make(chan string, 2048)
 
-	// 由于这个需要一一对应，并且把结果传回去，所以不能带缓冲。
-	OfflineTopicGetProcessor = make(chan string)
-	OfflineTopicGetChannel   = make(chan [][]byte)
-
 	ClientMap               = make(map[string]*net.Conn)
 	ClientMapProcessor      = make(chan *ClientHash, 1024)
 	ClientMapCleanProcessor = make(chan string)
@@ -129,13 +125,6 @@ func init() {
 	go func() {
 		for {
 			select {
-			case topic := <-OfflineTopicGetProcessor:
-				q := OfflineTopicMap[topic]
-				if q == nil {
-					OfflineTopicGetChannel <- nil
-				} else {
-					OfflineTopicGetChannel <- q.GetAll()
-				}
 			case topic := <-OfflineTopicCleanProcessor:
 				Log.Debugc(func() string {
 					return fmt.Sprintf("clean offlie topic queue: %s", topic)
@@ -151,9 +140,13 @@ func init() {
 				q := OfflineTopicMap[topic]
 				if q == nil {
 					q = NewOfflineTopicQueue(Max_message_queue)
+
+					OfflieTopicRWmux.Lock()
 					OfflineTopicMap[topic] = q
+					OfflieTopicRWmux.Unlock()
 				}
 				q.Add(msg.Payload())
+
 				Log.Debugc(func() string {
 					return fmt.Sprintf("add offline message to the topic: %s", topic)
 				})

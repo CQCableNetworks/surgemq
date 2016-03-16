@@ -34,9 +34,10 @@ import (
 )
 
 var (
-	errDisconnect  = errors.New("Disconnect")
-	MsgPendingTime time.Duration
-	counter_mux    sync.Mutex
+	errDisconnect    = errors.New("Disconnect")
+	MsgPendingTime   time.Duration
+	counter_mux      sync.Mutex
+	OfflieTopicRWmux sync.RWMutex
 )
 
 // processor() reads messages from the incoming buffer and processes them
@@ -625,9 +626,17 @@ func handleBadge(account_id string, badge_message *BadgeMessage) {
 // 根据topic获取离线消息队列
 // 由于不能并发读写，所以要借助channel来实现
 func getOfflineMsg(topic string) (msg [][]byte) {
-	OfflineTopicGetProcessor <- topic
-	msg = <-OfflineTopicGetChannel
-	return
+	OfflieTopicRWmux.RLock()
+	defer OfflieTopicRWmux.RUnlock()
+
+	q := OfflineTopicMap[topic]
+	if q == nil {
+		msg = nil
+	} else {
+		msg = q.GetAll()
+	}
+
+	return msg
 }
 
 //根据pkt_id，将pending队列里的该条消息移除
