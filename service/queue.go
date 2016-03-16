@@ -16,13 +16,13 @@ var (
 	OfflineTopicCleanProcessor = make(chan string, 2048)
 
 	ClientMap               = make(map[string]*net.Conn)
-	ClientMapProcessor      = make(chan *ClientHash, 1024)
+	ClientMapProcessor      = make(chan ClientHash, 1024)
 	ClientMapCleanProcessor = make(chan string)
 
 	PkgId = uint16(1)
 
 	NewMessagesQueue      = make(chan *message.PublishMessage, 2048)
-	SubscribersSliceQueue = make(chan *[]interface{}, 2048)
+	SubscribersSliceQueue = make(chan []interface{}, 2048)
 
 	Max_message_queue int
 )
@@ -102,7 +102,7 @@ func init() {
 		for i := 0; i < 2048; i++ {
 			sub_p := make([]interface{}, 1, 1)
 			select {
-			case SubscribersSliceQueue <- &sub_p:
+			case SubscribersSliceQueue <- sub_p:
 			default:
 				sub_p = nil
 				return
@@ -158,8 +158,8 @@ func init() {
 				client_conn := client.Conn
 
 				if ClientMap[client_id] != nil {
-					old_conn := ClientMap[client_id]
-					(*old_conn).Close()
+					old_conn := *ClientMap[client_id]
+					old_conn.Close()
 					delete(ClientMap, client_id)
 
 					Log.Debugc(func() string {
@@ -169,9 +169,9 @@ func init() {
 				ClientMap[client_id] = client_conn
 
 			case client_id := <-ClientMapCleanProcessor:
-				old_conn := ClientMap[client_id]
+				old_conn := *ClientMap[client_id]
 				if old_conn != nil {
-					(*old_conn).Close()
+					old_conn.Close()
 					delete(ClientMap, client_id)
 				}
 			}
