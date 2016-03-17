@@ -222,18 +222,18 @@ func (this *service) stop() {
 		Log.Debugc(func() string { return fmt.Sprintf("(%s) closing this.done", this.cid()) })
 		close(this.done)
 	}
-	// Wait for all the goroutines to stop.
-	this.wgStopped.Wait()
 
 	// Close the network connection
 	if this.conn != nil {
 		Log.Debugc(func() string { return fmt.Sprintf("(%s) closing this.conn", this.cid()) })
-		this.conn.Close()
 		ClientMapCleanProcessor <- this.sess.ID()
 	}
 
 	this.in.Close()
 	this.out.Close()
+
+	// Wait for all the goroutines to stop.
+	this.wgStopped.Wait()
 
 	Log.Debugc(func() string {
 		return fmt.Sprintf("(%s) Received %d bytes in %d messages.", this.cid(), this.inStat.bytes, this.inStat.msgs)
