@@ -15,9 +15,8 @@ var (
 	OfflineTopicQueueProcessor = make(chan *message.PublishMessage, 2048)
 	OfflineTopicCleanProcessor = make(chan string, 2048)
 
-	ClientMap               = make(map[string]*net.Conn)
-	ClientMapProcessor      = make(chan ClientHash, 1024)
-	ClientMapCleanProcessor = make(chan string)
+	ClientMap          = make(map[string]*net.Conn)
+	ClientMapProcessor = make(chan ClientHash, 1024)
 
 	PkgId = uint16(1)
 
@@ -160,7 +159,6 @@ func init() {
 				if ClientMap[client_id] != nil {
 					old_conn := *ClientMap[client_id]
 					old_conn.Close()
-					delete(ClientMap, client_id)
 
 					Log.Debugc(func() string {
 						return fmt.Sprintf("client connected with same client_id: %s. close old connection.", client_id)
@@ -168,12 +166,6 @@ func init() {
 				}
 				ClientMap[client_id] = client_conn
 
-			case client_id := <-ClientMapCleanProcessor:
-				old_conn := ClientMap[client_id]
-				if old_conn != nil {
-					(*old_conn).Close()
-					delete(ClientMap, client_id)
-				}
 			}
 		}
 	}()
