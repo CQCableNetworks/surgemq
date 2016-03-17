@@ -222,6 +222,8 @@ func (this *service) stop() {
 		Log.Debugc(func() string { return fmt.Sprintf("(%s) closing this.done", this.cid()) })
 		close(this.done)
 	}
+	// Wait for all the goroutines to stop.
+	this.wgStopped.Wait()
 
 	// Close the network connection
 	if this.conn != nil {
@@ -232,9 +234,6 @@ func (this *service) stop() {
 
 	this.in.Close()
 	this.out.Close()
-
-	// Wait for all the goroutines to stop.
-	this.wgStopped.Wait()
 
 	Log.Debugc(func() string {
 		return fmt.Sprintf("(%s) Received %d bytes in %d messages.", this.cid(), this.inStat.bytes, this.inStat.msgs)
