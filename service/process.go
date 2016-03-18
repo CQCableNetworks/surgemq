@@ -24,6 +24,7 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	//   "runtime/debug"
@@ -36,7 +37,6 @@ import (
 var (
 	errDisconnect    = errors.New("Disconnect")
 	MsgPendingTime   time.Duration
-	counter_mux      sync.Mutex
 	OfflieTopicRWmux sync.RWMutex
 )
 
@@ -541,7 +541,7 @@ func (this *service) _process_publish(msg *message.PublishMessage) (err error) {
 	case config.Get("s_channel"):
 		go this.onReceiveBadge(msg)
 	default:
-		msg.SetPacketId(GetRandPkgId())
+		msg.SetPacketId(GetNextPktId())
 		go this.onPublish(msg)
 	}
 	return
@@ -582,12 +582,10 @@ func (this *service) _process_offline_message(topic string) (err error) {
 }
 
 // 获取一个递增的pkgid
-func GetRandPkgId() uint16 {
-	counter_mux.Lock()
-	defer counter_mux.Unlock()
-	PkgId++
+func GetNextPktId() uint16 {
+	atomic.AddUint32(&PktId, 1)
 
-	return PkgId
+	return (uint16)(PktId)
 }
 
 // 判断消息是否已读
@@ -680,11 +678,11 @@ func _return_temp_subs(subs []interface{}) {
 func _get_tmp_msg() (msg *message.PublishMessage) {
 	select {
 	case msg = <-NewMessagesQueue:
-		msg.SetPacketId(GetRandPkgId())
+		msg.SetPacketId(GetNextPktId())
 		// 成功取到msg，什么都不做
 	default:
 		msg = message.NewPublishMessage()
-		msg.SetPacketId(GetRandPkgId())
+		msg.SetPacketId(GetNextPktId())
 		msg.SetQoS(message.QosAtLeastOnce)
 	}
 

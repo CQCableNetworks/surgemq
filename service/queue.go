@@ -18,7 +18,7 @@ var (
 	ClientMap          = make(map[string]*net.Conn)
 	ClientMapProcessor = make(chan ClientHash, 1024)
 
-	PkgId = uint16(1)
+	PktId = uint32(1)
 
 	NewMessagesQueue      = make(chan *message.PublishMessage, 2048)
 	SubscribersSliceQueue = make(chan []interface{}, 2048)
