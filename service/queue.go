@@ -33,10 +33,10 @@ type ClientHash struct {
 
 // 定义一个离线消息队列的结构体，保存一个二维byte数组和一个位置
 type OfflineTopicQueue struct {
-	q      [][]byte
-	pos    int
-	length int
-	clean  bool
+	Q       [][]byte
+	Pos     int
+	Length  int
+	Cleaned bool
 	//   lock  *sync.RWMutex
 }
 
@@ -56,19 +56,19 @@ func NewOfflineTopicQueue(length int) (q *OfflineTopicQueue) {
 //NOTE 因为目前是在channel中操作，所以无需加锁。如果需要并发访问，则需要加锁了。
 func (this *OfflineTopicQueue) Add(msg_bytes []byte) {
 	//   this.lock.Lock()
-	if this.q == nil {
-		this.q = make([][]byte, this.length, this.length)
+	if this.Q == nil {
+		this.Q = make([][]byte, this.Length, this.Length)
 	}
 
-	this.q[this.pos] = msg_bytes
-	this.pos++
+	this.Q[this.Pos] = msg_bytes
+	this.Pos++
 
-	if this.pos >= this.length {
-		this.pos = 0
+	if this.Pos >= this.Length {
+		this.Pos = 0
 	}
 
-	if this.clean {
-		this.clean = false
+	if this.Cleaned {
+		this.Cleaned = false
 	}
 	//   this.lock.Unlock()
 }
@@ -76,21 +76,21 @@ func (this *OfflineTopicQueue) Add(msg_bytes []byte) {
 // 清除队列中已有消息
 func (this *OfflineTopicQueue) Clean() {
 	//   this.lock.Lock()
-	this.q = nil
-	this.pos = 0
-	this.clean = true
+	this.Q = nil
+	this.Pos = 0
+	this.Cleaned = true
 	//   this.lock.Unlock()
 }
 
 func (this *OfflineTopicQueue) GetAll() (msg_bytes [][]byte) {
 	//   this.lock.RLock()
-	if this.clean {
+	if this.Cleaned {
 		return nil
 	} else {
-		msg_bytes = make([][]byte, this.length, this.length)
+		msg_bytes = make([][]byte, this.Length, this.Length)
 
-		msg_bytes = this.q[this.pos:this.length]
-		msg_bytes = append(msg_bytes, this.q[0:this.pos]...)
+		msg_bytes = this.Q[this.Pos:this.Length]
+		msg_bytes = append(msg_bytes, this.Q[0:this.Pos]...)
 		return msg_bytes
 	}
 	//   this.lock.RUnlock()
