@@ -690,6 +690,8 @@ func _get_tmp_msg() (msg *message.PublishMessage) {
 }
 
 func _return_tmp_msg(msg *message.PublishMessage) {
+	msg.SetPayload(nil)
+
 	select {
 	case NewMessagesQueue <- msg:
 		//成功还回去了，什么都不做
