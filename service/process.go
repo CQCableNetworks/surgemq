@@ -580,7 +580,6 @@ func (this *service) handlePendingMessage(msg *message.PublishMessage) {
 	// 将msg按照pkt_id，存入pending队列
 	// 如果指定时间后，msg仍然在队列中，说明未收到回包，需要将消息放到OfflineTopicQueueProcessor中处理
 	pkt_id := msg.PacketId()
-	Log.Warn("pkt_id: %d\n", pkt_id)
 	PendingQueue[pkt_id] = msg
 
 	time.Sleep(time.Second * MsgPendingTime)
