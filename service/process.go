@@ -17,7 +17,7 @@ package service
 import (
 	"encoding/base64"
 	"github.com/pquerna/ffjson/ffjson"
-//   "encoding/json"
+	//   "encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -27,7 +27,7 @@ import (
 	"sync/atomic"
 	"time"
 
-//   "runtime/debug"
+	//   "runtime/debug"
 	"github.com/nagae-memooff/config"
 	"github.com/nagae-memooff/surgemq/sessions"
 	"github.com/nagae-memooff/surgemq/topics"
@@ -634,7 +634,7 @@ func _get_temp_subs() (subs []interface{}) {
 	case subs = <-SubscribersSliceQueue:
 	// 成功从缓存池里拿到，直接返回
 	default:
-	// 拿不到，说明池子里没对象了，就地创建一个
+		// 拿不到，说明池子里没对象了，就地创建一个
 		sub_p := make([]interface{}, 1, 1)
 		return sub_p
 	}
