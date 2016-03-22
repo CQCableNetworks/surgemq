@@ -676,6 +676,5 @@ func _return_tmp_msg(msg *message.PublishMessage) {
 	case NewMessagesQueue <- msg:
 	//成功还回去了，什么都不做
 	default:
-		msg = nil
 	}
 }

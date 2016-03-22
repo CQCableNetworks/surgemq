@@ -117,7 +117,6 @@ func init() {
 			select {
 			case NewMessagesQueue <- tmp_msg:
 			default:
-				tmp_msg = nil
 				return
 			}
 		}
