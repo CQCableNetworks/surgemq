@@ -17,7 +17,7 @@ package service
 import (
 	"encoding/base64"
 	"github.com/pquerna/ffjson/ffjson"
-	//   "encoding/json"
+//   "encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -27,7 +27,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	//   "runtime/debug"
+//   "runtime/debug"
 	"github.com/nagae-memooff/config"
 	"github.com/nagae-memooff/surgemq/sessions"
 	"github.com/nagae-memooff/surgemq/topics"
@@ -65,22 +65,18 @@ func (this *service) processor() {
 
 	for {
 		// 1. Find out what message is next and the size of the message
-		//     this.rmu.Lock()
-		mtype, total, err := this.peekMessageSize()
-		if err != nil {
-			if err == io.EOF {
-				Log.Debugc(func() string {
-					return fmt.Sprintf("(%s) suddenly disconnect.", this.cid())
-				})
-			} else {
-				Log.Errorc(func() string {
-					return fmt.Sprintf("(%s) Error peeking next message size: %v", this.cid(), err)
-				})
-			}
+		p, ok := this.in.ReadBuffer()
+		if !ok {
+			Log.Debugc(func() string {
+				return fmt.Sprintf("(%s) suddenly disconnect.", this.cid())
+			})
 			return
 		}
+		mtype := message.MessageType((*p)[0] >> 4)
 
-		msg, n, err := this.peekMessage(mtype, total)
+		msg, err := mtype.New()
+		n, err := msg.Decode(*p)
+
 		if err != nil {
 			if err == io.EOF {
 				Log.Debugc(func() string {
@@ -111,25 +107,11 @@ func (this *service) processor() {
 			}
 		}
 
-		// 7. We should commit the bytes in the buffer so we can move on
-		_, err = this.in.ReadCommit(total)
-		if err != nil {
-			if err != io.EOF {
-				Log.Errorc(func() string {
-					return fmt.Sprintf("(%s) Error committing %d read bytes: %v", this.cid(), total, err)
-				})
-			}
-			return
-		}
-
 		// 7. Check to see if done is closed, if so, exit
-		if this.isDone() && this.in.Len() == 0 {
+		if this.isDone() {
 			return
 		}
 
-		//if this.inStat.msgs%1000 == 0 {
-		//	Log.Debugc(func() string{ return fmt.Sprintf("(%s) Going to process message %d", this.cid(), this.inStat.msgs)})
-		//}
 	}
 }
 
@@ -650,9 +632,9 @@ func (this *service) _process_ack(pkg_id uint16) {
 func _get_temp_subs() (subs []interface{}) {
 	select {
 	case subs = <-SubscribersSliceQueue:
-		// 成功从缓存池里拿到，直接返回
+	// 成功从缓存池里拿到，直接返回
 	default:
-		// 拿不到，说明池子里没对象了，就地创建一个
+	// 拿不到，说明池子里没对象了，就地创建一个
 		sub_p := make([]interface{}, 1, 1)
 		return sub_p
 	}
@@ -664,7 +646,7 @@ func _return_temp_subs(subs []interface{}) {
 	subs[0] = nil
 	select {
 	case SubscribersSliceQueue <- subs:
-		// 成功返还，什么都不做
+	// 成功返还，什么都不做
 	default:
 		subs = nil
 		Log.Errorc(func() string {
@@ -679,7 +661,7 @@ func _get_tmp_msg() (msg *message.PublishMessage) {
 	select {
 	case msg = <-NewMessagesQueue:
 		msg.SetPacketId(GetNextPktId())
-		// 成功取到msg，什么都不做
+	// 成功取到msg，什么都不做
 	default:
 		msg = message.NewPublishMessage()
 		msg.SetPacketId(GetNextPktId())
@@ -692,7 +674,7 @@ func _get_tmp_msg() (msg *message.PublishMessage) {
 func _return_tmp_msg(msg *message.PublishMessage) {
 	select {
 	case NewMessagesQueue <- msg:
-		//成功还回去了，什么都不做
+	//成功还回去了，什么都不做
 	default:
 		msg = nil
 	}
