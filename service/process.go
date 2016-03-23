@@ -355,9 +355,11 @@ func (this *service) processSubscribe(msg *message.SubscribeMessage) error {
 		rqos, err := this.topicsMgr.Subscribe(t, qos[i], &this.onpub, this.sess.ID())
 		//     rqos, err := this.topicsMgr.Subscribe(t, qos[i], &this)
 		if err != nil {
+			Log.Errorc(func() string { return fmt.Sprintf("(%s) subscribe topic %s failed: %s", this.cid(), t, err) })
 			this.stop()
 			return err
 		}
+		Log.Infoc(func() string { return fmt.Sprintf("(%s) subscribe topic %s", this.cid(), t) })
 		this.sess.AddTopic(string(t), qos[i])
 
 		retcodes = append(retcodes, rqos)
