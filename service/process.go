@@ -625,7 +625,10 @@ func getOfflineMsg(topic string) (msgs [][]byte) {
 
 //根据pkt_id，将pending队列里的该条消息移除
 func (this *service) _process_ack(pkt_id uint16) {
-	PendingQueue[pkt_id].SetPayload(nil)
+	msg := PendingQueue[pkt_id]
+	if msg != nil {
+		msg.SetPayload(nil)
+	}
 	PendingQueue[pkt_id] = nil
 
 	Log.Debugc(func() string {
