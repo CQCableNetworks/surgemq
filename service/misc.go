@@ -27,6 +27,10 @@ import (
 	"github.com/surgemq/message"
 )
 
+var (
+	CompressLevel int
+)
+
 func getConnectMessage(conn io.Closer) (*message.ConnectMessage, error) {
 	buf, err := getMessageBuffer(conn)
 	if err != nil {
@@ -153,7 +157,7 @@ func isTimeout(err error) bool {
 
 func Gzip(bytes []byte) (compressed_bytes []byte, err error) {
 	var res bs.Buffer
-	gz, err := gzip.NewWriterLevel(&res, 9)
+	gz, err := gzip.NewWriterLevel(&res, CompressLevel)
 	if err != nil {
 		Log.Error(func() string { return fmt.Sprintf("make zip writer err: %s\n", err) })
 		return nil, err
