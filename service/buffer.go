@@ -139,6 +139,8 @@ func (this *buffer) Close() error {
 	this.pcond.Signal()
 	this.ccond.L.Unlock()
 
+	this.buf = nil
+	this.b = nil
 	return nil
 }
 
