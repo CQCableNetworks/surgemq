@@ -132,14 +132,12 @@ func (this *OfflineTopicQueue) ConvertToGzip() (err error) {
 		this.Gziped = true
 		for i, bytes := range this.Q {
 			if bytes != nil {
-				go func() {
-					mb, err := Gzip(bytes)
-					if err != nil {
-						Log.Errorc(func() string { return err.Error() })
-					}
+				mb, err := Gzip(bytes)
+				if err != nil {
+					Log.Errorc(func() string { return err.Error() })
+				}
 
-					this.Q[i] = mb
-				}()
+				this.Q[i] = mb
 			}
 		}
 	}
@@ -153,14 +151,12 @@ func (this *OfflineTopicQueue) ConvertToUnzip() (err error) {
 		this.Gziped = false
 		for i, bytes := range this.Q {
 			if bytes != nil {
-				go func() {
-					mb, err := Gunzip(bytes)
-					if err != nil {
-						Log.Errorc(func() string { return err.Error() })
-					}
+				mb, err := Gunzip(bytes)
+				if err != nil {
+					Log.Errorc(func() string { return err.Error() })
+				}
 
-					this.Q[i] = mb
-				}()
+				this.Q[i] = mb
 			}
 		}
 	}
