@@ -185,11 +185,11 @@ func (this *OfflineTopicQueue) RedisKey(pos int) (key string) {
 	return fmt.Sprintf("/t/%s:%d", this.Topic, pos)
 }
 
-// TODO： 如果是redis存储，则怎么操作？
+//如果是redis内的，则不支持转换
 func (this *OfflineTopicQueue) ConvertToGzip() (err error) {
 	if this.Cleaned {
 		return nil
-	} else if !this.Gziped {
+	} else if MessageQueueStore == "local" && !this.Gziped {
 		this.Gziped = true
 		for i, bytes := range this.Q {
 			if bytes != nil {
@@ -205,11 +205,11 @@ func (this *OfflineTopicQueue) ConvertToGzip() (err error) {
 	return nil
 }
 
-// TODO： 如果是redis存储，则怎么操作？
+//如果是redis内的，则不支持转换
 func (this *OfflineTopicQueue) ConvertToUnzip() (err error) {
 	if this.Cleaned {
 		return nil
-	} else if this.Gziped {
+	} else if MessageQueueStore == "local" && this.Gziped {
 		this.Gziped = false
 		for i, bytes := range this.Q {
 			if bytes != nil {
