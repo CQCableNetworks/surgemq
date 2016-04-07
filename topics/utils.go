@@ -109,3 +109,28 @@ func RedisDoGetMulti(cmd string, args ...interface{}) (data []string, err error)
 	}
 	return
 }
+
+func RedisDoGetMultiByteSlice(cmd string, args ...interface{}) (data [][]byte, err error) {
+	c := RedisPool.Get()
+	defer c.Close()
+
+	//   data_origin, err := c.Do("keys", "channel:*")
+	data_origin, err := c.Do(cmd, args...)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	data_ary, ok := data_origin.([]interface{})
+	if !ok {
+		return
+	}
+
+	for _, v := range data_ary {
+		value, ok := v.([]uint8)
+		if ok {
+			data = append(data, []byte(value))
+		}
+	}
+	return
+}

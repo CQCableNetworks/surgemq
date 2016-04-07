@@ -608,7 +608,6 @@ func (this *service) handleBadge(account_id string, badge_message *BadgeMessage)
 }
 
 // 根据topic获取离线消息队列
-// 由于不能并发读写，所以要借助channel来实现
 func getOfflineMsg(topic string) (msgs [][]byte) {
 	OfflieTopicRWmux.RLock()
 	q := OfflineTopicMap[topic]

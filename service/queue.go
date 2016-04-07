@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"github.com/nagae-memooff/surgemq/topics"
 	"github.com/surgemq/message"
 	"net"
 	//   "sync"
@@ -25,6 +26,7 @@ var (
 	SubscribersSliceQueue = make(chan []interface{}, 2048)
 
 	Max_message_queue int
+	MessageQueueStore string
 )
 
 type ClientHash struct {
@@ -34,6 +36,7 @@ type ClientHash struct {
 
 // 定义一个离线消息队列的结构体，保存一个二维byte数组和一个位置
 type OfflineTopicQueue struct {
+	Topic   string
 	Q       [][]byte
 	Pos     int
 	Length  int
@@ -42,9 +45,23 @@ type OfflineTopicQueue struct {
 	//   lock  *sync.RWMutex
 }
 
-func NewOfflineTopicQueue(length int) (q *OfflineTopicQueue) {
-	q = &OfflineTopicQueue{
-		make([][]byte, length, length),
+func NewOfflineTopicQueue(length int, topic string) (mq *OfflineTopicQueue) {
+	var (
+		q [][]byte
+		t string
+	)
+	switch MessageQueueStore {
+	case "redis":
+		t = topic
+		q = nil
+	case "local":
+		t = ""
+		q = make([][]byte, length, length)
+	}
+
+	mq = &OfflineTopicQueue{
+		t,
+		q,
 		0,
 		length,
 		true,
@@ -52,14 +69,14 @@ func NewOfflineTopicQueue(length int) (q *OfflineTopicQueue) {
 		//     new(sync.RWMutex),
 	}
 
-	return q
+	return mq
 }
 
 // 向队列中添加消息
 //NOTE 因为目前是在channel中操作，所以无需加锁。如果需要并发访问，则需要加锁了。
 func (this *OfflineTopicQueue) Add(msg_bytes []byte) {
 	//   this.lock.Lock()
-	if this.Q == nil {
+	if this.Q == nil && MessageQueueStore != "redis" {
 		this.Q = make([][]byte, this.Length, this.Length)
 	}
 
@@ -71,10 +88,21 @@ func (this *OfflineTopicQueue) Add(msg_bytes []byte) {
 			return
 		}
 
-		this.Q[this.Pos] = mb
+		switch MessageQueueStore {
+		case "local":
+			this.Q[this.Pos] = mb
+		case "redis":
+			topics.RedisDo("set", this.RedisKey(this.Pos), mb)
+		}
 	} else {
-		this.Q[this.Pos] = msg_bytes
+		switch MessageQueueStore {
+		case "local":
+			this.Q[this.Pos] = msg_bytes
+		case "redis":
+			topics.RedisDo("set", this.RedisKey(this.Pos), msg_bytes)
+		}
 	}
+
 	this.Pos++
 
 	if this.Pos >= this.Length {
@@ -90,7 +118,18 @@ func (this *OfflineTopicQueue) Add(msg_bytes []byte) {
 // 清除队列中已有消息
 func (this *OfflineTopicQueue) Clean() {
 	//   this.lock.Lock()
-	this.Q = nil
+	switch MessageQueueStore {
+	case "local":
+		this.Q = nil
+	case "redis":
+		keys := make([]interface{}, this.Length, this.Length)
+		for i := 0; i < this.Length; i++ {
+			keys[i] = this.RedisKey(i)
+		}
+
+		topics.RedisDo("del", keys...)
+	}
+
 	this.Pos = 0
 	this.Cleaned = true
 	this.Gziped = OfflineTopicPayloadUseGzip
@@ -104,8 +143,25 @@ func (this *OfflineTopicQueue) GetAll() (msg_bytes [][]byte) {
 	} else {
 		msg_bytes = make([][]byte, this.Length, this.Length)
 
-		msg_bytes = this.Q[this.Pos:this.Length]
-		msg_bytes = append(msg_bytes, this.Q[0:this.Pos]...)
+		switch MessageQueueStore {
+		case "local":
+			msg_bytes = this.Q[this.Pos:this.Length]
+			msg_bytes = append(msg_bytes, this.Q[0:this.Pos]...)
+		case "redis":
+			keys := make([]interface{}, this.Length, this.Length)
+			for i := this.Pos; i < this.Length; i++ {
+				keys = append(keys, this.RedisKey(i))
+			}
+			for i := 0; i < this.Pos; i++ {
+				keys = append(keys, this.RedisKey(i))
+			}
+
+			var err error
+			msg_bytes, err = topics.RedisDoGetMultiByteSlice("mget", keys...)
+			if err != nil {
+				Log.Errorc(func() string { return err.Error() })
+			}
+		}
 
 		// 判断是否gzip存储，如果是，则解压后再取出
 		if this.Gziped {
@@ -125,6 +181,11 @@ func (this *OfflineTopicQueue) GetAll() (msg_bytes [][]byte) {
 	//   this.lock.RUnlock()
 }
 
+func (this *OfflineTopicQueue) RedisKey(pos int) (key string) {
+	return fmt.Sprintf("/t/%s:%d", this.Topic, pos)
+}
+
+// TODO： 如果是redis存储，则怎么操作？
 func (this *OfflineTopicQueue) ConvertToGzip() (err error) {
 	if this.Cleaned {
 		return nil
@@ -144,6 +205,7 @@ func (this *OfflineTopicQueue) ConvertToGzip() (err error) {
 	return nil
 }
 
+// TODO： 如果是redis存储，则怎么操作？
 func (this *OfflineTopicQueue) ConvertToUnzip() (err error) {
 	if this.Cleaned {
 		return nil
@@ -174,7 +236,7 @@ func init() {
 		}
 	}
 
-	for i := 0; i < 1024; i++ {
+	for i := 0; i < 15000; i++ {
 		tmp_msg := message.NewPublishMessage()
 		tmp_msg.SetQoS(message.QosAtLeastOnce)
 
@@ -202,7 +264,7 @@ func init() {
 				topic := string(msg.Topic())
 				q := OfflineTopicMap[topic]
 				if q == nil {
-					q = NewOfflineTopicQueue(Max_message_queue)
+					q = NewOfflineTopicQueue(Max_message_queue, topic)
 
 					OfflieTopicRWmux.Lock()
 					OfflineTopicMap[topic] = q
