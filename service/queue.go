@@ -6,6 +6,7 @@ import (
 	"github.com/surgemq/message"
 	"net"
 	"sync"
+	"time"
 )
 
 var (
@@ -22,8 +23,7 @@ var (
 
 	PktId = uint32(1)
 
-	NewMessagesQueue      = make(chan *message.PublishMessage, 16384)
-	SubscribersSliceQueue = make(chan []interface{}, 2048)
+	OldMessagesQueue = make(chan *message.PublishMessage, 1024)
 
 	Max_message_queue int
 	MessageQueueStore string
@@ -42,7 +42,7 @@ type OfflineTopicQueue struct {
 	Length  int
 	Cleaned bool
 	Gziped  bool
-	lock    *sync.RWMutex
+	lock    sync.RWMutex
 }
 
 func NewOfflineTopicQueue(length int, topic string) (mq *OfflineTopicQueue) {
@@ -60,13 +60,12 @@ func NewOfflineTopicQueue(length int, topic string) (mq *OfflineTopicQueue) {
 	}
 
 	mq = &OfflineTopicQueue{
-		t,
-		q,
-		0,
-		length,
-		true,
-		OfflineTopicPayloadUseGzip,
-		new(sync.RWMutex),
+		Topic:   t,
+		Q:       q,
+		Pos:     0,
+		Length:  length,
+		Cleaned: true,
+		Gziped:  OfflineTopicPayloadUseGzip,
 	}
 
 	return mq
@@ -226,26 +225,39 @@ func (this *OfflineTopicQueue) ConvertToUnzip() (err error) {
 }
 
 func init() {
-	for i := 0; i < 1024; i++ {
-		sub_p := make([]interface{}, 1, 1)
-		select {
-		case SubscribersSliceQueue <- sub_p:
-		default:
-			sub_p = nil
-			return
+	/*
+		for i := 0; i < 1024; i++ {
+			sub_p := make([]interface{}, 1, 1)
+			select {
+			case SubscribersSliceQueue <- sub_p:
+			default:
+				sub_p = nil
+				return
+			}
 		}
-	}
+	*/
 
-	for i := 0; i < 15000; i++ {
-		tmp_msg := message.NewPublishMessage()
-		tmp_msg.SetQoS(message.QosAtLeastOnce)
+	/*
+		for i := 0; i < 15000; i++ {
+			tmp_msg := message.NewPublishMessage()
+			tmp_msg.SetQoS(message.QosAtLeastOnce)
 
-		select {
-		case NewMessagesQueue <- tmp_msg:
-		default:
-			return
+			NewMessagesQueue <- tmp_msg
 		}
-	}
+	*/
+	go func() {
+		for {
+			select {
+			case msg := <-OldMessagesQueue:
+				MessagePool.Put(msg)
+				//
+			default:
+				time.Sleep(10 * time.Second)
+
+			}
+
+		}
+	}()
 
 	go func() {
 		for {
@@ -271,7 +283,11 @@ func init() {
 					OfflieTopicRWmux.Unlock()
 				}
 
-				go addMsgToQueue(q, msg, topic)
+				q.Add(msg.Payload())
+
+				Log.Debugc(func() string {
+					return fmt.Sprintf("add offline message to the topic: %s", topic)
+				})
 
 			case client := <-ClientMapProcessor:
 				client_id := client.Name
@@ -290,13 +306,4 @@ func init() {
 			}
 		}
 	}()
-}
-
-func addMsgToQueue(q *OfflineTopicQueue, msg *message.PublishMessage, topic string) {
-	q.Add(msg.Payload())
-	msg.SetPayload(nil)
-
-	Log.Debugc(func() string {
-		return fmt.Sprintf("add offline message to the topic: %s", topic)
-	})
 }

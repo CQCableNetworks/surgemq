@@ -40,7 +40,27 @@ var (
 	BroadCastChannel string
 	SendChannel      string
 	ApnPushChannel   string
+	p                *sync.Pool
+	MessagePool      *sync.Pool
 )
+
+func init() {
+	p = &sync.Pool{
+		New: func() interface{} {
+			return make([]interface{}, 1, 1)
+
+		},
+	}
+
+	MessagePool = &sync.Pool{
+		New: func() interface{} {
+			tmp_msg := message.NewPublishMessage()
+			tmp_msg.SetQoS(message.QosAtLeastOnce)
+			return tmp_msg
+
+		},
+	}
+}
 
 // processor() reads messages from the incoming buffer and processes them
 func (this *service) processor() {
@@ -421,7 +441,7 @@ func (this *service) onPublish(msg *message.PublishMessage) (err error) {
 
 	//   Log.Errorc(func() string{ return fmt.Sprintf("(%s) Publishing to topic %q and %d subscribers", this.cid(), string(msg.Topic()), len(this.subs))})
 	//   fmt.Printf("value: %v\n", config.GetModel())
-	go this.handlePendingMessage(msg)
+	go this.handlePendingMessage(*msg)
 
 	for _, s := range subs {
 		if s != nil {
@@ -575,7 +595,7 @@ func GetNextPktId() uint16 {
 }
 
 // 判断消息是否已读
-func (this *service) handlePendingMessage(msg *message.PublishMessage) {
+func (this *service) handlePendingMessage(msg message.PublishMessage) {
 	// 如果QOS=0,则无需等待直接返回
 	if msg.QoS() == message.QosAtMostOnce {
 		return
@@ -584,7 +604,7 @@ func (this *service) handlePendingMessage(msg *message.PublishMessage) {
 	// 将msg按照pkt_id，存入pending队列
 	// 如果指定时间后，msg仍然在队列中，说明未收到回包，需要将消息放到OfflineTopicQueueProcessor中处理
 	pkt_id := msg.PacketId()
-	PendingQueue[pkt_id] = msg
+	PendingQueue[pkt_id] = &msg
 
 	time.Sleep(time.Second * MsgPendingTime)
 	if PendingQueue[pkt_id] != nil {
@@ -592,7 +612,7 @@ func (this *service) handlePendingMessage(msg *message.PublishMessage) {
 			return fmt.Sprintf("(%s) receive ack timeout. send msg to offline msg queue.topic: %s", this.cid(), msg.Topic())
 		})
 		PendingQueue[pkt_id] = nil
-		OfflineTopicQueueProcessor <- msg
+		OfflineTopicQueueProcessor <- &msg
 	}
 }
 
@@ -624,10 +644,10 @@ func getOfflineMsg(topic string) (msgs [][]byte) {
 
 //根据pkt_id，将pending队列里的该条消息移除
 func (this *service) _process_ack(pkt_id uint16) {
-	msg := PendingQueue[pkt_id]
-	if msg != nil {
-		msg.SetPayload(nil)
-	}
+	//   msg := PendingQueue[pkt_id]
+	//   if msg != nil {
+	//     msg.SetPayload(nil)
+	//   }
 	PendingQueue[pkt_id] = nil
 
 	Log.Debugc(func() string {
@@ -637,54 +657,67 @@ func (this *service) _process_ack(pkt_id uint16) {
 
 // 从池子里获取一个长度为1的slice，用于填充订阅队列
 func _get_temp_subs() (subs []interface{}) {
-	select {
-	case subs = <-SubscribersSliceQueue:
-	// 成功从缓存池里拿到，直接返回
-	default:
-		// 拿不到，说明池子里没对象了，就地创建一个
-		sub_p := make([]interface{}, 1, 1)
-		return sub_p
-	}
-	return
+	/*
+		select {
+		case subs = <-SubscribersSliceQueue:
+		// 成功从缓存池里拿到，直接返回
+		default:
+			// 拿不到，说明池子里没对象了，就地创建一个
+			sub_p := make([]interface{}, 1, 1)
+			return sub_p
+		}
+	*/
+
+	return p.Get().([]interface{})
 }
 
 // 把subs返还池子
 func _return_temp_subs(subs []interface{}) {
+	/*
+		subs[0] = nil
+		select {
+		case SubscribersSliceQueue <- subs:
+		// 成功返还，什么都不做
+		default:
+		}
+	*/
 	subs[0] = nil
-	select {
-	case SubscribersSliceQueue <- subs:
-	// 成功返还，什么都不做
-	default:
-		subs = nil
-		Log.Errorc(func() string {
-			return "return temp subs failed, may be the SubscribersSliceQueue is full!"
-		})
-	}
-	return
+	p.Put(subs)
 }
 
 // 从池子里获取一个msg对象，用于打包
 func _get_tmp_msg() (msg *message.PublishMessage) {
-	select {
-	case msg = <-NewMessagesQueue:
-		msg.SetPacketId(GetNextPktId())
-	// 成功取到msg，什么都不做
-	default:
-		Log.Debugc(func() string {
-			return "no tmp msg in NewMsgQueue. will new it."
-		})
-		msg = message.NewPublishMessage()
-		msg.SetQoS(message.QosAtLeastOnce)
-		msg.SetPacketId(GetNextPktId())
-	}
+	/*
+		select {
+		case msg = <-NewMessagesQueue:
+			msg.SetPacketId(GetNextPktId())
+		// 成功取到msg，什么都不做
+		default:
+			Log.Debugc(func() string {
+				return "no tmp msg in NewMsgQueue. will new it."
+			})
+			msg = message.NewPublishMessage()
+			msg.SetQoS(message.QosAtLeastOnce)
+			msg.SetPacketId(GetNextPktId())
+		}
+	*/
 
+	msg = MessagePool.Get().(*message.PublishMessage)
+	msg.SetPacketId(GetNextPktId())
 	return
 }
 
 func _return_tmp_msg(msg *message.PublishMessage) {
+	/*
+		select {
+		case NewMessagesQueue <- msg:
+		//成功还回去了，什么都不做
+		default:
+		}
+	*/
+	//   mp.Put(msg)
 	select {
-	case NewMessagesQueue <- msg:
-	//成功还回去了，什么都不做
+	case OldMessagesQueue <- msg:
 	default:
 	}
 }

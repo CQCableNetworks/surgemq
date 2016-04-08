@@ -146,6 +146,10 @@ func (this *buffer) Close() error {
 读取ringbuffer指定的buffer指针，返回该指针并清空ringbuffer该位置存在的指针内容，以及将读序号加1
 */
 func (this *buffer) ReadBuffer() (p *[]byte, ok bool) {
+	if this.isDone() {
+		return nil, false
+	}
+
 	this.ccond.L.Lock()
 	defer func() {
 		this.pcond.Signal()
@@ -184,6 +188,10 @@ func (this *buffer) ReadBuffer() (p *[]byte, ok bool) {
 写入ringbuffer指针，以及将写序号加1
 */
 func (this *buffer) WriteBuffer(in *[]byte) (ok bool) {
+	if this.isDone() {
+		return false
+	}
+
 	this.pcond.L.Lock()
 	defer func() {
 		this.ccond.Signal()
@@ -323,7 +331,7 @@ func (this *buffer) WriteTo(w io.Writer) (int64, error) {
 }
 
 func (this *buffer) isDone() bool {
-	if atomic.LoadInt64(&this.done) == 1 {
+	if this == nil || atomic.LoadInt64(&this.done) == 1 {
 		return true
 	}
 
