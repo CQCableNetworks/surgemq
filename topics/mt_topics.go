@@ -55,10 +55,6 @@ func (this *mtTopics) Subscribe(topic []byte, qos byte, sub interface{}, client_
 		return message.QosFailure, fmt.Errorf("Subscriber cannot be nil")
 	}
 
-	if !checkValidchannel(client_id, topic_str) {
-		return message.QosFailure, fmt.Errorf("%s: Invalid Channel %s", client_id, topic_str)
-	}
-
 	if qos > MXMaxQosAllowed {
 		//     Log.Printf("invalid qos: %d\n", qos)
 		qos = MXMaxQosAllowed
