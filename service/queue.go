@@ -5,7 +5,7 @@ import (
 	"github.com/nagae-memooff/surgemq/topics"
 	"github.com/surgemq/message"
 	"net"
-	//   "sync"
+	"sync"
 )
 
 var (
@@ -42,7 +42,7 @@ type OfflineTopicQueue struct {
 	Length  int
 	Cleaned bool
 	Gziped  bool
-	//   lock  *sync.RWMutex
+	lock    *sync.RWMutex
 }
 
 func NewOfflineTopicQueue(length int, topic string) (mq *OfflineTopicQueue) {
@@ -66,7 +66,7 @@ func NewOfflineTopicQueue(length int, topic string) (mq *OfflineTopicQueue) {
 		length,
 		true,
 		OfflineTopicPayloadUseGzip,
-		//     new(sync.RWMutex),
+		new(sync.RWMutex),
 	}
 
 	return mq
@@ -75,7 +75,8 @@ func NewOfflineTopicQueue(length int, topic string) (mq *OfflineTopicQueue) {
 // 向队列中添加消息
 //NOTE 因为目前是在channel中操作，所以无需加锁。如果需要并发访问，则需要加锁了。
 func (this *OfflineTopicQueue) Add(msg_bytes []byte) {
-	//   this.lock.Lock()
+	this.lock.Lock()
+	defer this.lock.Unlock()
 	if this.Q == nil && MessageQueueStore != "redis" {
 		this.Q = make([][]byte, this.Length, this.Length)
 	}
@@ -112,12 +113,12 @@ func (this *OfflineTopicQueue) Add(msg_bytes []byte) {
 	if this.Cleaned {
 		this.Cleaned = false
 	}
-	//   this.lock.Unlock()
 }
 
 // 清除队列中已有消息
 func (this *OfflineTopicQueue) Clean() {
-	//   this.lock.Lock()
+	this.lock.Lock()
+	defer this.lock.Unlock()
 	switch MessageQueueStore {
 	case "local":
 		this.Q = nil
@@ -133,16 +134,16 @@ func (this *OfflineTopicQueue) Clean() {
 	this.Pos = 0
 	this.Cleaned = true
 	this.Gziped = OfflineTopicPayloadUseGzip
-	//   this.lock.Unlock()
 }
 
 func (this *OfflineTopicQueue) GetAll() (msg_bytes [][]byte) {
-	//   this.lock.RLock()
 	if this.Cleaned {
 		return nil
 	} else {
-		msg_bytes = make([][]byte, this.Length, this.Length)
+		this.lock.RLock()
+		defer this.lock.RUnlock()
 
+		msg_bytes = make([][]byte, this.Length, this.Length)
 		switch MessageQueueStore {
 		case "local":
 			msg_bytes = this.Q[this.Pos:this.Length]
@@ -178,7 +179,6 @@ func (this *OfflineTopicQueue) GetAll() (msg_bytes [][]byte) {
 		}
 		return msg_bytes
 	}
-	//   this.lock.RUnlock()
 }
 
 func (this *OfflineTopicQueue) RedisKey(pos int) (key string) {
@@ -257,7 +257,7 @@ func init() {
 
 				q := OfflineTopicMap[topic]
 				if q != nil {
-					q.Clean()
+					go q.Clean()
 				}
 			case msg := <-OfflineTopicQueueProcessor:
 				//         _ = msg
@@ -270,13 +270,8 @@ func init() {
 					OfflineTopicMap[topic] = q
 					OfflieTopicRWmux.Unlock()
 				}
-				q.Add(msg.Payload())
-				msg.SetPayload(nil)
-				// copy(aSlice, bSlice)
 
-				Log.Debugc(func() string {
-					return fmt.Sprintf("add offline message to the topic: %s", topic)
-				})
+				go addMsgToQueue(q, msg, topic)
 
 			case client := <-ClientMapProcessor:
 				client_id := client.Name
@@ -295,4 +290,13 @@ func init() {
 			}
 		}
 	}()
+}
+
+func addMsgToQueue(q *OfflineTopicQueue, msg *message.PublishMessage, topic string) {
+	q.Add(msg.Payload())
+	msg.SetPayload(nil)
+
+	Log.Debugc(func() string {
+		return fmt.Sprintf("add offline message to the topic: %s", topic)
+	})
 }
