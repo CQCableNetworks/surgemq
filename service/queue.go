@@ -23,7 +23,7 @@ var (
 
 	PktId = uint32(1)
 
-	OldMessagesQueue = make(chan *message.PublishMessage, 1024)
+	OldMessagesQueue = make(chan *message.PublishMessage, 8192)
 
 	Max_message_queue int
 	MessageQueueStore string
@@ -252,7 +252,7 @@ func init() {
 				MessagePool.Put(msg)
 				//
 			default:
-				time.Sleep(10 * time.Second)
+				time.Sleep(5 * time.Second)
 
 			}
 
@@ -267,27 +267,32 @@ func init() {
 					return fmt.Sprintf("clean offlie topic queue: %s", topic)
 				})
 
+				OfflieTopicRWmux.RLock()
 				q := OfflineTopicMap[topic]
+				OfflieTopicRWmux.RUnlock()
 				if q != nil {
 					go q.Clean()
 				}
 			case msg := <-OfflineTopicQueueProcessor:
 				//         _ = msg
-				topic := string(msg.Topic())
-				q := OfflineTopicMap[topic]
-				if q == nil {
-					q = NewOfflineTopicQueue(Max_message_queue, topic)
+				//         topic := string(msg.Topic())
+				go func(topic string, payload []byte) {
+					OfflieTopicRWmux.RLock()
+					q := OfflineTopicMap[topic]
+					OfflieTopicRWmux.RUnlock()
+					if q == nil {
+						q = NewOfflineTopicQueue(Max_message_queue, topic)
 
-					OfflieTopicRWmux.Lock()
-					OfflineTopicMap[topic] = q
-					OfflieTopicRWmux.Unlock()
-				}
+						OfflieTopicRWmux.Lock()
+						OfflineTopicMap[topic] = q
+						OfflieTopicRWmux.Unlock()
+					}
 
-				q.Add(msg.Payload())
-
-				Log.Debugc(func() string {
-					return fmt.Sprintf("add offline message to the topic: %s", topic)
-				})
+					q.Add(payload)
+					Log.Debugc(func() string {
+						return fmt.Sprintf("add offline message to the topic: %s", topic)
+					})
+				}(string(msg.Topic()), msg.Payload())
 
 			case client := <-ClientMapProcessor:
 				client_id := client.Name

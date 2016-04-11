@@ -441,7 +441,7 @@ func (this *service) onPublish(msg *message.PublishMessage) (err error) {
 
 	//   Log.Errorc(func() string{ return fmt.Sprintf("(%s) Publishing to topic %q and %d subscribers", this.cid(), string(msg.Topic()), len(this.subs))})
 	//   fmt.Printf("value: %v\n", config.GetModel())
-	go this.handlePendingMessage(*msg)
+	go this.handlePendingMessage(msg)
 
 	for _, s := range subs {
 		if s != nil {
@@ -595,7 +595,7 @@ func GetNextPktId() uint16 {
 }
 
 // 判断消息是否已读
-func (this *service) handlePendingMessage(msg message.PublishMessage) {
+func (this *service) handlePendingMessage(msg *message.PublishMessage) {
 	// 如果QOS=0,则无需等待直接返回
 	if msg.QoS() == message.QosAtMostOnce {
 		return
@@ -604,7 +604,7 @@ func (this *service) handlePendingMessage(msg message.PublishMessage) {
 	// 将msg按照pkt_id，存入pending队列
 	// 如果指定时间后，msg仍然在队列中，说明未收到回包，需要将消息放到OfflineTopicQueueProcessor中处理
 	pkt_id := msg.PacketId()
-	PendingQueue[pkt_id] = &msg
+	PendingQueue[pkt_id] = msg
 
 	time.Sleep(time.Second * MsgPendingTime)
 	if PendingQueue[pkt_id] != nil {
@@ -612,7 +612,7 @@ func (this *service) handlePendingMessage(msg message.PublishMessage) {
 			return fmt.Sprintf("(%s) receive ack timeout. send msg to offline msg queue.topic: %s", this.cid(), msg.Topic())
 		})
 		PendingQueue[pkt_id] = nil
-		OfflineTopicQueueProcessor <- &msg
+		OfflineTopicQueueProcessor <- msg
 	}
 }
 
