@@ -277,6 +277,7 @@ func init() {
 				//         _ = msg
 				//         topic := string(msg.Topic())
 				go func(topic string, payload []byte) {
+					//         func(topic string, payload []byte) {
 					OfflieTopicRWmux.RLock()
 					q := OfflineTopicMap[topic]
 					OfflieTopicRWmux.RUnlock()
@@ -288,10 +289,13 @@ func init() {
 						OfflieTopicRWmux.Unlock()
 					}
 
-					q.Add(payload)
 					Log.Debugc(func() string {
 						return fmt.Sprintf("add offline message to the topic: %s", topic)
+						// return fmt.Sprintf("add offline message: topic: %s, payload: %s", msg.Topic(), msg.Payload())
 					})
+
+					q.Add(payload)
+					Return_tmp_msg(msg)
 				}(string(msg.Topic()), msg.Payload())
 
 			case client := <-ClientMapProcessor:

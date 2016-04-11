@@ -431,7 +431,6 @@ func (this *service) onPublish(msg *message.PublishMessage) (err error) {
 	//   var subs []interface{}
 	subs := _get_temp_subs()
 	defer _return_temp_subs(subs)
-	defer _return_tmp_msg(msg)
 
 	err = this.topicsMgr.Subscribers(msg.Topic(), msg.QoS(), &subs, nil)
 	if err != nil {
@@ -610,6 +609,7 @@ func (this *service) handlePendingMessage(msg *message.PublishMessage) {
 	if PendingQueue[pkt_id] != nil {
 		Log.Debugc(func() string {
 			return fmt.Sprintf("(%s) receive ack timeout. send msg to offline msg queue.topic: %s", this.cid(), msg.Topic())
+			//       return fmt.Sprintf("(%s) receive ack timeout. send msg to offline msg queue.topic: %s, payload: %s", this.cid(), msg.Topic(),msg.Payload())
 		})
 		PendingQueue[pkt_id] = nil
 		OfflineTopicQueueProcessor <- msg
@@ -648,6 +648,9 @@ func (this *service) _process_ack(pkt_id uint16) {
 	//   if msg != nil {
 	//     msg.SetPayload(nil)
 	//   }
+	msg := PendingQueue[pkt_id]
+	Return_tmp_msg(msg)
+
 	PendingQueue[pkt_id] = nil
 
 	Log.Debugc(func() string {
@@ -707,7 +710,7 @@ func _get_tmp_msg() (msg *message.PublishMessage) {
 	return
 }
 
-func _return_tmp_msg(msg *message.PublishMessage) {
+func Return_tmp_msg(msg *message.PublishMessage) {
 	/*
 		select {
 		case NewMessagesQueue <- msg:
