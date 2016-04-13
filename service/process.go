@@ -42,6 +42,7 @@ var (
 	ApnPushChannel   string
 	p                *sync.Pool
 	MessagePool      *sync.Pool
+	OnGroupPublish   func(msg *message.PublishMessage, this *service) (err error)
 )
 
 func init() {
@@ -60,6 +61,7 @@ func init() {
 
 		},
 	}
+
 }
 
 // processor() reads messages from the incoming buffer and processes them
@@ -462,6 +464,10 @@ type BroadCastMessage struct {
 	Clients []string `json:"clients"`
 	Payload string   `json:"payload"`
 }
+type MtBroadCastMessage struct {
+	Clients []string `json:"topics"`
+	Payload string   `json:"payload"`
+}
 type BadgeMessage struct {
 	Data int    `json:data`
 	Type string `json:type`
@@ -502,45 +508,11 @@ func (this *service) onReceiveBadge(msg *message.PublishMessage) (err error) {
 	return
 }
 
-func (this *service) onGroupPublish(msg *message.PublishMessage) (err error) {
-	var (
-		broadcast_msg BroadCastMessage
-		payload       []byte
-	)
-
-	Log.Infoc(func() string {
-		return "receive group msgs.\n"
-	})
-
-	err = ffjson.Unmarshal(msg.Payload(), &broadcast_msg)
-	if err != nil {
-		Log.Errorc(func() string { return fmt.Sprintf("can't parse message json: %s", msg.Payload()) })
-		return
-	}
-
-	payload, err = base64.StdEncoding.DecodeString(broadcast_msg.Payload)
-	if err != nil {
-		Log.Errorc(func() string { return fmt.Sprintf("can't decode payload: %s", broadcast_msg.Payload) })
-		return
-	}
-
-	for _, client_id := range broadcast_msg.Clients {
-		topic := topics.GetUserTopic(client_id)
-		if topic == "" {
-			continue
-		}
-
-		go this._publish_to_topic(topic, payload)
-	}
-
-	return
-}
-
 // 处理publish类型的消息，如果是特殊频道特殊处理，否则正常处理
 func (this *service) _process_publish(msg *message.PublishMessage) (err error) {
 	switch string(msg.Topic()) {
 	case BroadCastChannel:
-		go this.onGroupPublish(msg)
+		go OnGroupPublish(msg, this)
 	case SendChannel:
 		go this.onReceiveBadge(msg)
 	case ApnPushChannel:
@@ -705,9 +677,14 @@ func _get_tmp_msg() (msg *message.PublishMessage) {
 		}
 	*/
 
-	msg = MessagePool.Get().(*message.PublishMessage)
-	msg.SetPacketId(GetNextPktId())
-	return
+	//FIXME!!
+	for {
+		msg = MessagePool.Get().(*message.PublishMessage)
+		if msg != nil {
+			msg.SetPacketId(GetNextPktId())
+			return
+		}
+	}
 }
 
 func Return_tmp_msg(msg *message.PublishMessage) {
