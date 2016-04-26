@@ -34,15 +34,16 @@ import (
 )
 
 var (
-	errDisconnect    = errors.New("Disconnect")
-	MsgPendingTime   time.Duration
-	OfflieTopicRWmux sync.RWMutex
-	BroadCastChannel string
-	SendChannel      string
-	ApnPushChannel   string
-	p                *sync.Pool
-	MessagePool      *sync.Pool
-	OnGroupPublish   func(msg *message.PublishMessage, this *service) (err error)
+	errDisconnect       = errors.New("Disconnect")
+	MsgPendingTime      time.Duration
+	OfflieTopicRWmux    sync.RWMutex
+	BroadCastChannel    string
+	SendChannel         string
+	ApnPushChannel      string
+	p                   *sync.Pool
+	MessagePool         *sync.Pool
+	OnGroupPublish      func(msg *message.PublishMessage, this *service) (err error)
+	OnlineStatusChannel = "/fdf406fadef0ba24f3bfe8bc00b7bb350901417f"
 )
 
 func init() {
@@ -517,11 +518,25 @@ func (this *service) _process_publish(msg *message.PublishMessage) (err error) {
 		go this.onReceiveBadge(msg)
 	case ApnPushChannel:
 		// TODO 处理苹果推送
+	case OnlineStatusChannel:
+		go this.check_online_status(msg)
 	default:
 		msg.SetPacketId(GetNextPktId())
 		go this.onPublish(msg)
 	}
 	return
+}
+
+//根据指定ID查询客户端在线状态，并推送消息
+func (this *service) check_online_status(msg *message.PublishMessage) {
+	//TODO 优化
+	client_id := string(msg.Payload())
+	online, lasttime := GetOnlineStatus(client_id)
+
+	payload := []byte(fmt.Sprintf(`{"client_id": "%s", "status": "%s", "since": "%s"}`, client_id, online, lasttime))
+
+	msg.SetPayload(payload)
+	this.onPublish(msg)
 }
 
 //根据topic和payload 推送消息

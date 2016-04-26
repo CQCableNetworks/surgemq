@@ -21,6 +21,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/nagae-memooff/surgemq/sessions"
 	"github.com/nagae-memooff/surgemq/topics"
@@ -179,6 +180,8 @@ func (this *service) start(client_id string) error {
 		}
 	}
 
+	SetOnlineStatus(client_id, true, time.Now())
+
 	// Processor is responsible for reading messages out of the buffer and processing
 	// them accordingly.
 	this.wgStarted.Add(1)
@@ -222,6 +225,8 @@ func (this *service) stop() {
 		Log.Debugc(func() string { return fmt.Sprintf("(%s) closing this.done", this.cid()) })
 		close(this.done)
 	}
+
+	SetOnlineStatus(this.sess.ID(), false, time.Now())
 
 	// Close the network connection
 	if this.conn != nil {
