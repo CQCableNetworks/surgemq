@@ -2,9 +2,11 @@ package service
 
 import (
 	"fmt"
+	"github.com/nagae-memooff/surgemq/topics"
 	"github.com/surgemq/message"
 	"net"
-	//   "sync"
+	"sync"
+	"time"
 )
 
 var (
@@ -14,16 +16,17 @@ var (
 	OfflineTopicMap            = make(map[string]*OfflineTopicQueue)
 	OfflineTopicQueueProcessor = make(chan *message.PublishMessage, 2048)
 	OfflineTopicCleanProcessor = make(chan string, 2048)
+	OfflineTopicPayloadUseGzip bool
 
 	ClientMap          = make(map[string]*net.Conn)
 	ClientMapProcessor = make(chan ClientHash, 1024)
 
 	PktId = uint32(1)
 
-	NewMessagesQueue      = make(chan *message.PublishMessage, 2048)
-	SubscribersSliceQueue = make(chan []interface{}, 2048)
+	OldMessagesQueue = make(chan *message.PublishMessage, 8192)
 
 	Max_message_queue int
+	MessageQueueStore string
 )
 
 type ClientHash struct {
@@ -33,34 +36,73 @@ type ClientHash struct {
 
 // 定义一个离线消息队列的结构体，保存一个二维byte数组和一个位置
 type OfflineTopicQueue struct {
+	Topic   string
 	Q       [][]byte
 	Pos     int
 	Length  int
 	Cleaned bool
-	//   lock  *sync.RWMutex
+	Gziped  bool
+	lock    sync.RWMutex
 }
 
-func NewOfflineTopicQueue(length int) (q *OfflineTopicQueue) {
-	q = &OfflineTopicQueue{
-		make([][]byte, length, length),
-		0,
-		length,
-		true,
-		//     new(sync.RWMutex),
+func NewOfflineTopicQueue(length int, topic string) (mq *OfflineTopicQueue) {
+	var (
+		q [][]byte
+		t string
+	)
+	switch MessageQueueStore {
+	case "redis":
+		t = topic
+		q = nil
+	case "local":
+		t = ""
+		q = make([][]byte, length, length)
 	}
 
-	return q
+	mq = &OfflineTopicQueue{
+		Topic:   t,
+		Q:       q,
+		Pos:     0,
+		Length:  length,
+		Cleaned: true,
+		Gziped:  OfflineTopicPayloadUseGzip,
+	}
+
+	return mq
 }
 
 // 向队列中添加消息
 //NOTE 因为目前是在channel中操作，所以无需加锁。如果需要并发访问，则需要加锁了。
 func (this *OfflineTopicQueue) Add(msg_bytes []byte) {
-	//   this.lock.Lock()
-	if this.Q == nil {
+	this.lock.Lock()
+	defer this.lock.Unlock()
+	if this.Q == nil && MessageQueueStore != "redis" {
 		this.Q = make([][]byte, this.Length, this.Length)
 	}
 
-	this.Q[this.Pos] = msg_bytes
+	// 判断是否gzip，如果是，则压缩后再存入
+	if this.Gziped {
+		mb, err := Gzip(msg_bytes)
+		if err != nil {
+			Log.Errorc(func() string { return fmt.Sprintf("gzip failed. msg: %s, err: %s", msg_bytes, err) })
+			return
+		}
+
+		switch MessageQueueStore {
+		case "local":
+			this.Q[this.Pos] = mb
+		case "redis":
+			topics.RedisDo("set", this.RedisKey(this.Pos), mb)
+		}
+	} else {
+		switch MessageQueueStore {
+		case "local":
+			this.Q[this.Pos] = msg_bytes
+		case "redis":
+			topics.RedisDo("set", this.RedisKey(this.Pos), msg_bytes)
+		}
+	}
+
 	this.Pos++
 
 	if this.Pos >= this.Length {
@@ -70,35 +112,121 @@ func (this *OfflineTopicQueue) Add(msg_bytes []byte) {
 	if this.Cleaned {
 		this.Cleaned = false
 	}
-	//   this.lock.Unlock()
 }
 
 // 清除队列中已有消息
 func (this *OfflineTopicQueue) Clean() {
-	//   this.lock.Lock()
-	this.Q = nil
+	this.lock.Lock()
+	defer this.lock.Unlock()
+	switch MessageQueueStore {
+	case "local":
+		this.Q = nil
+	case "redis":
+		keys := make([]interface{}, this.Length, this.Length)
+		for i := 0; i < this.Length; i++ {
+			keys[i] = this.RedisKey(i)
+		}
+
+		topics.RedisDo("del", keys...)
+	}
+
 	this.Pos = 0
 	this.Cleaned = true
-	//   this.lock.Unlock()
+	this.Gziped = OfflineTopicPayloadUseGzip
 }
 
 func (this *OfflineTopicQueue) GetAll() (msg_bytes [][]byte) {
-	//   this.lock.RLock()
 	if this.Cleaned {
 		return nil
 	} else {
-		msg_bytes = make([][]byte, this.Length, this.Length)
+		this.lock.RLock()
+		defer this.lock.RUnlock()
 
-		msg_bytes = this.Q[this.Pos:this.Length]
-		msg_bytes = append(msg_bytes, this.Q[0:this.Pos]...)
+		msg_bytes = make([][]byte, this.Length, this.Length)
+		switch MessageQueueStore {
+		case "local":
+			msg_bytes = this.Q[this.Pos:this.Length]
+			msg_bytes = append(msg_bytes, this.Q[0:this.Pos]...)
+		case "redis":
+			keys := make([]interface{}, this.Length, this.Length)
+			for i := this.Pos; i < this.Length; i++ {
+				keys = append(keys, this.RedisKey(i))
+			}
+			for i := 0; i < this.Pos; i++ {
+				keys = append(keys, this.RedisKey(i))
+			}
+
+			var err error
+			msg_bytes, err = topics.RedisDoGetMultiByteSlice("mget", keys...)
+			if err != nil {
+				Log.Errorc(func() string { return err.Error() })
+			}
+		}
+
+		// 判断是否gzip存储，如果是，则解压后再取出
+		if this.Gziped {
+			for i, bytes := range msg_bytes {
+				if bytes != nil {
+					mb, err := Gunzip(bytes)
+					if err != nil {
+						Log.Errorc(func() string { return err.Error() })
+					}
+
+					msg_bytes[i] = mb
+				}
+			}
+		}
 		return msg_bytes
 	}
-	//   this.lock.RUnlock()
+}
+
+func (this *OfflineTopicQueue) RedisKey(pos int) (key string) {
+	return fmt.Sprintf("/t/%s:%d", this.Topic, pos)
+}
+
+//如果是redis内的，则不支持转换
+func (this *OfflineTopicQueue) ConvertToGzip() (err error) {
+	if this.Cleaned {
+		return nil
+	} else if MessageQueueStore == "local" && !this.Gziped {
+		this.Gziped = true
+		for i, bytes := range this.Q {
+			if bytes != nil {
+				mb, err := Gzip(bytes)
+				if err != nil {
+					Log.Errorc(func() string { return err.Error() })
+				}
+
+				this.Q[i] = mb
+			}
+		}
+	}
+	return nil
+}
+
+//如果是redis内的，则不支持转换
+func (this *OfflineTopicQueue) ConvertToUnzip() (err error) {
+	if this.Cleaned {
+		return nil
+	} else if MessageQueueStore == "local" && this.Gziped {
+		this.Gziped = false
+		for i, bytes := range this.Q {
+			if bytes != nil {
+				mb, err := Gunzip(bytes)
+				if err != nil {
+					Log.Errorc(func() string { return err.Error() })
+				}
+
+				this.Q[i] = mb
+			}
+		}
+	}
+	return nil
 }
 
 func init() {
-	go func() {
-		for i := 0; i < 2048; i++ {
+	/*
+		for i := 0; i < 1024; i++ {
 			sub_p := make([]interface{}, 1, 1)
 			select {
 			case SubscribersSliceQueue <- sub_p:
@@ -107,19 +235,27 @@ func init() {
 				return
 			}
 		}
-	}()
+	*/
 
-	go func() {
-		for i := 0; i < 2048; i++ {
+	/*
+		for i := 0; i < 15000; i++ {
 			tmp_msg := message.NewPublishMessage()
 			tmp_msg.SetQoS(message.QosAtLeastOnce)
 
+			NewMessagesQueue <- tmp_msg
+		}
+	*/
+	go func() {
+		for {
 			select {
-			case NewMessagesQueue <- tmp_msg:
+			case msg := <-OldMessagesQueue:
+				MessagePool.Put(msg)
+				//
 			default:
-				tmp_msg = nil
-				return
+				time.Sleep(5 * time.Second)
+
 			}
+
 		}
 	}()
 
@@ -131,26 +267,36 @@ func init() {
 					return fmt.Sprintf("clean offlie topic queue: %s", topic)
 				})
 
+				OfflieTopicRWmux.RLock()
 				q := OfflineTopicMap[topic]
+				OfflieTopicRWmux.RUnlock()
 				if q != nil {
-					q.Clean()
+					go q.Clean()
 				}
 			case msg := <-OfflineTopicQueueProcessor:
 				//         _ = msg
-				topic := string(msg.Topic())
-				q := OfflineTopicMap[topic]
-				if q == nil {
-					q = NewOfflineTopicQueue(Max_message_queue)
+				//         topic := string(msg.Topic())
+				go func(topic string, payload []byte) {
+					//         func(topic string, payload []byte) {
+					OfflieTopicRWmux.RLock()
+					q := OfflineTopicMap[topic]
+					OfflieTopicRWmux.RUnlock()
+					if q == nil {
+						q = NewOfflineTopicQueue(Max_message_queue, topic)
 
-					OfflieTopicRWmux.Lock()
-					OfflineTopicMap[topic] = q
-					OfflieTopicRWmux.Unlock()
-				}
-				q.Add(msg.Payload())
+						OfflieTopicRWmux.Lock()
+						OfflineTopicMap[topic] = q
+						OfflieTopicRWmux.Unlock()
+					}
 
-				Log.Debugc(func() string {
-					return fmt.Sprintf("add offline message to the topic: %s", topic)
-				})
+					Log.Debugc(func() string {
+						return fmt.Sprintf("add offline message to the topic: %s", topic)
+						// return fmt.Sprintf("add offline message: topic: %s, payload: %s", msg.Topic(), msg.Payload())
+					})
+
+					q.Add(payload)
+					_return_tmp_msg(msg)
+				}(string(msg.Topic()), msg.Payload())
 
 			case client := <-ClientMapProcessor:
 				client_id := client.Name

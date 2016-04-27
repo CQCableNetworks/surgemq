@@ -18,9 +18,11 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"github.com/pquerna/ffjson/ffjson"
 	"io"
 	"net"
 	//   "net/url"
+	"encoding/base64"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -136,6 +138,72 @@ func (this *Server) ListenAndServe() error {
 	this.quit = make(chan struct{})
 
 	//     _, err := url.Parse(uri)
+	if this.TopicsProvider == "mx" {
+		OnGroupPublish = func(msg *message.PublishMessage, this *service) (err error) {
+			var (
+				broadcast_msg BroadCastMessage
+				payload       []byte
+			)
+
+			Log.Infoc(func() string {
+				return "receive group msgs.\n"
+			})
+
+			err = ffjson.Unmarshal(msg.Payload(), &broadcast_msg)
+			if err != nil {
+				Log.Errorc(func() string { return fmt.Sprintf("can't parse message json: %s", msg.Payload()) })
+				return
+			}
+
+			payload, err = base64.StdEncoding.DecodeString(broadcast_msg.Payload)
+			if err != nil {
+				Log.Errorc(func() string { return fmt.Sprintf("can't decode payload: %s", broadcast_msg.Payload) })
+				return
+			}
+
+			for _, client_id := range broadcast_msg.Clients {
+				topic := topics.GetUserTopic(client_id)
+				if topic == "" {
+					continue
+				}
+
+				go this.publishToTopic(topic, payload)
+			}
+
+			return
+		}
+	} else if this.TopicsProvider == "mt" {
+
+		OnGroupPublish = func(msg *message.PublishMessage, this *service) (err error) {
+			var (
+				broadcast_msg MtBroadCastMessage
+				payload       []byte
+			)
+
+			Log.Infoc(func() string {
+				return "receive group msgs.\n"
+			})
+
+			err = ffjson.Unmarshal(msg.Payload(), &broadcast_msg)
+			if err != nil {
+				Log.Errorc(func() string { return fmt.Sprintf("can't parse message json: %s", msg.Payload()) })
+				return
+			}
+
+			payload, err = base64.StdEncoding.DecodeString(broadcast_msg.Payload)
+			if err != nil {
+				Log.Errorc(func() string { return fmt.Sprintf("can't decode payload: %s", broadcast_msg.Payload) })
+				return
+			}
+
+			for _, topic := range broadcast_msg.Clients {
+				go this.publishToTopic(topic, payload)
+			}
+
+			return
+		}
+	}
+
 	var err error
 
 	if strings.Contains(config.Get("uri_scheme"), "ssl") {
@@ -215,7 +283,6 @@ func (this *Server) ListenAndServe() error {
 						time.Sleep(tempDelay)
 						continue
 					}
-					//           return
 					return
 				}
 

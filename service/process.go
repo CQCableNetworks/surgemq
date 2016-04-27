@@ -28,17 +28,42 @@ import (
 	"time"
 
 	//   "runtime/debug"
-	"github.com/nagae-memooff/config"
 	"github.com/nagae-memooff/surgemq/sessions"
 	"github.com/nagae-memooff/surgemq/topics"
 	"github.com/surgemq/message"
 )
 
 var (
-	errDisconnect    = errors.New("Disconnect")
-	MsgPendingTime   time.Duration
-	OfflieTopicRWmux sync.RWMutex
+	errDisconnect       = errors.New("Disconnect")
+	MsgPendingTime      time.Duration
+	OfflieTopicRWmux    sync.RWMutex
+	BroadCastChannel    string
+	SendChannel         string
+	ApnPushChannel      string
+	p                   *sync.Pool
+	MessagePool         *sync.Pool
+	OnGroupPublish      func(msg *message.PublishMessage, this *service) (err error)
+	OnlineStatusChannel = "/fdf406fadef0ba24f3bfe8bc00b7bb350901417f"
 )
+
+func init() {
+	p = &sync.Pool{
+		New: func() interface{} {
+			return make([]interface{}, 1, 1)
+
+		},
+	}
+
+	MessagePool = &sync.Pool{
+		New: func() interface{} {
+			tmp_msg := message.NewPublishMessage()
+			tmp_msg.SetQoS(message.QosAtLeastOnce)
+			return tmp_msg
+
+		},
+	}
+
+}
 
 // processor() reads messages from the incoming buffer and processes them
 func (this *service) processor() {
@@ -65,22 +90,18 @@ func (this *service) processor() {
 
 	for {
 		// 1. Find out what message is next and the size of the message
-		//     this.rmu.Lock()
-		mtype, total, err := this.peekMessageSize()
-		if err != nil {
-			if err == io.EOF {
-				Log.Debugc(func() string {
-					return fmt.Sprintf("(%s) suddenly disconnect.", this.cid())
-				})
-			} else {
-				Log.Errorc(func() string {
-					return fmt.Sprintf("(%s) Error peeking next message size: %v", this.cid(), err)
-				})
-			}
+		p, ok := this.in.ReadBuffer()
+		if !ok {
+			Log.Debugc(func() string {
+				return fmt.Sprintf("(%s) suddenly disconnect.", this.cid())
+			})
 			return
 		}
+		mtype := message.MessageType((*p)[0] >> 4)
 
-		msg, n, err := this.peekMessage(mtype, total)
+		msg, err := mtype.New()
+		n, err := msg.Decode(*p)
+
 		if err != nil {
 			if err == io.EOF {
 				Log.Debugc(func() string {
@@ -111,25 +132,11 @@ func (this *service) processor() {
 			}
 		}
 
-		// 7. We should commit the bytes in the buffer so we can move on
-		_, err = this.in.ReadCommit(total)
-		if err != nil {
-			if err != io.EOF {
-				Log.Errorc(func() string {
-					return fmt.Sprintf("(%s) Error committing %d read bytes: %v", this.cid(), total, err)
-				})
-			}
-			return
-		}
-
 		// 7. Check to see if done is closed, if so, exit
-		if this.isDone() && this.in.Len() == 0 {
+		if this.isDone() {
 			return
 		}
 
-		//if this.inStat.msgs%1000 == 0 {
-		//	Log.Debugc(func() string{ return fmt.Sprintf("(%s) Going to process message %d", this.cid(), this.inStat.msgs)})
-		//}
 	}
 }
 
@@ -151,7 +158,7 @@ func (this *service) processIncoming(msg message.Message) error {
 		//     Log.Errorc(func() string{ return fmt.Sprintf("this.subs is: %v,  count is %d, msg_type is %T", this.subs, len(this.subs), msg)})
 		// For PUBACK message, it means QoS 1, we should send to ack queue
 		//     Log.Errorc(func() string{ return fmt.Sprintf("\n%T:%d==========\nmsg is %v\n=====================", *msg, msg.PacketId(), *msg)})
-		go this._process_ack(msg.PacketId())
+		go this.processAck(msg.PacketId())
 		this.sess.Pub1ack.Ack(msg)
 		this.processAcked(this.sess.Pub1ack)
 
@@ -274,7 +281,7 @@ func (this *service) processAcked(ackq *sessions.Ackqueue) {
 		case message.PUBREL:
 			// If ack is PUBREL, that means the QoS 2 message sent by a remote client is
 			// releassed, so let's publish it to other subscribers.
-			if err = this.onPublish(msg.(*message.PublishMessage)); err != nil {
+			if err = this.postPublish(msg.(*message.PublishMessage)); err != nil {
 				Log.Errorc(func() string {
 					return fmt.Sprintf("(%s) Error processing ack'ed %s message: %v", this.cid(), ackmsg.Mtype, err)
 				})
@@ -334,7 +341,7 @@ func (this *service) processPublish(msg *message.PublishMessage) error {
 
 		_, err := this.writeMessage(resp)
 
-		err = this._process_publish(msg)
+		err = this.preDispatchPublish(msg)
 		return err
 
 	case message.QosAtLeastOnce:
@@ -345,10 +352,10 @@ func (this *service) processPublish(msg *message.PublishMessage) error {
 			return err
 		}
 
-		err := this._process_publish(msg)
+		err := this.preDispatchPublish(msg)
 		return err
 	case message.QosAtMostOnce:
-		err := this._process_publish(msg)
+		err := this.preDispatchPublish(msg)
 		return err
 	default:
 		fmt.Printf("default: %d\n", msg.QoS())
@@ -373,9 +380,11 @@ func (this *service) processSubscribe(msg *message.SubscribeMessage) error {
 		rqos, err := this.topicsMgr.Subscribe(t, qos[i], &this.onpub, this.sess.ID())
 		//     rqos, err := this.topicsMgr.Subscribe(t, qos[i], &this)
 		if err != nil {
+			Log.Errorc(func() string { return fmt.Sprintf("(%s) subscribe topic %s failed: %s", this.cid(), t, err) })
 			this.stop()
 			return err
 		}
+		Log.Infoc(func() string { return fmt.Sprintf("(%s) subscribe topic %s", this.cid(), t) })
 		this.sess.AddTopic(string(t), qos[i])
 
 		retcodes = append(retcodes, rqos)
@@ -390,7 +399,7 @@ func (this *service) processSubscribe(msg *message.SubscribeMessage) error {
 	}
 
 	for _, t := range topics {
-		go this._process_offline_message(string(t))
+		go this.pushOfflineMessage(string(t))
 	}
 
 	return nil
@@ -412,57 +421,24 @@ func (this *service) processUnsubscribe(msg *message.UnsubscribeMessage) error {
 	return err
 }
 
-// onPublish() is called when the server receives a PUBLISH message AND have completed
-// the ack cycle. This method will get the list of subscribers based on the publish
-// topic, and publishes the message to the list of subscribers.
-func (this *service) onPublish(msg *message.PublishMessage) (err error) {
-	//   if msg.Retain() {
-	//     if err = this.topicsMgr.Retain(msg); err != nil {
-	//       Log.Errorc(func() string{ return fmt.Sprintf("(%s) Error retaining message: %v", this.cid(), err)})
-	//     }
-	//   }
-
-	//   var subs []interface{}
-	subs := _get_temp_subs()
-	defer _return_temp_subs(subs)
-	defer _return_tmp_msg(msg)
-
-	err = this.topicsMgr.Subscribers(msg.Topic(), msg.QoS(), &subs, nil)
-	if err != nil {
-		Log.Errorc(func() string { return fmt.Sprintf("(%s) Error retrieving subscribers list: %v", this.cid(), err) })
-		return err
+// 预投递publish类型的消息，如果是特殊频道特殊处理，否则正常处理
+func (this *service) preDispatchPublish(msg *message.PublishMessage) (err error) {
+	switch string(msg.Topic()) {
+	case BroadCastChannel:
+		go OnGroupPublish(msg, this)
+	case SendChannel:
+		go this.onReceiveBadge(msg)
+	case ApnPushChannel:
+		// TODO 处理苹果推送
+	case OnlineStatusChannel:
+		go this.checkOnlineStatus(msg)
+	default:
+		msg.SetPacketId(getNextPktId())
+		go this.postPublish(msg)
 	}
-
-	msg.SetRetain(false)
-
-	//   Log.Errorc(func() string{ return fmt.Sprintf("(%s) Publishing to topic %q and %d subscribers", this.cid(), string(msg.Topic()), len(this.subs))})
-	//   fmt.Printf("value: %v\n", config.GetModel())
-	go this.handlePendingMessage(msg)
-
-	for _, s := range subs {
-		if s != nil {
-			fn, ok := s.(*OnPublishFunc)
-			if !ok {
-				Log.Errorc(func() string { return fmt.Sprintf("Invalid onPublish Function: %T", s) })
-				return fmt.Errorf("Invalid onPublish Function")
-			} else {
-				(*fn)(msg)
-				//         Log.Errorc(func() string{ return fmt.Sprintf("OfflineTopicQueue[%s]: %v, len is: %d\n", msg.Topic(), OfflineTopicQueue[string(msg.Topic())], len(OfflineTopicQueue[string(msg.Topic())]))})
-			}
-		}
-	}
-
-	return nil
+	return
 }
 
-type BroadCastMessage struct {
-	Clients []string `json:"clients"`
-	Payload string   `json:"payload"`
-}
-type BadgeMessage struct {
-	Data int    `json:data`
-	Type string `json:type`
-}
 
 func (this *service) onReceiveBadge(msg *message.PublishMessage) (err error) {
 	var badge_message BadgeMessage
@@ -495,71 +471,35 @@ func (this *service) onReceiveBadge(msg *message.PublishMessage) (err error) {
 	}
 	//   Log.Infoc(func() string{ return fmt.Sprintf("badge: %v, type: %T\n", badge_message.Data, badge_message.Data)})
 
-	go this.handleBadge(account_id, &badge_message)
+	go this.processBadge(account_id, &badge_message)
 	return
 }
 
-func (this *service) onGroupPublish(msg *message.PublishMessage) (err error) {
-	var (
-		broadcast_msg BroadCastMessage
-		payload       []byte
-	)
+//根据指定ID查询客户端在线状态，并推送消息
+func (this *service) checkOnlineStatus(msg *message.PublishMessage) {
+	//TODO 优化
+	client_id := string(msg.Payload())
+	online, lasttime := GetOnlineStatus(client_id)
 
-	Log.Infoc(func() string {
-		return "receive group msgs.\n"
-	})
+	payload := []byte(fmt.Sprintf(`{"client_id": "%s", "status": "%s", "since": "%s"}`, client_id, online, lasttime))
 
-	err = ffjson.Unmarshal(msg.Payload(), &broadcast_msg)
-	if err != nil {
-		Log.Errorc(func() string { return fmt.Sprintf("can't parse message json: %s", msg.Payload()) })
-		return
-	}
-
-	payload, err = base64.StdEncoding.DecodeString(broadcast_msg.Payload)
-	if err != nil {
-		Log.Errorc(func() string { return fmt.Sprintf("can't decode payload: %s", broadcast_msg.Payload) })
-		return
-	}
-
-	for _, client_id := range broadcast_msg.Clients {
-		topic := topics.GetUserTopic(client_id)
-		if topic == "" {
-			continue
-		}
-
-		go this._publish_to_topic(topic, payload)
-	}
-
-	return
-}
-
-// 处理publish类型的消息，如果是特殊频道特殊处理，否则正常处理
-func (this *service) _process_publish(msg *message.PublishMessage) (err error) {
-	switch string(msg.Topic()) {
-	case config.Get("broadcast_channel"):
-		go this.onGroupPublish(msg)
-	case config.Get("s_channel"):
-		go this.onReceiveBadge(msg)
-	default:
-		msg.SetPacketId(GetNextPktId())
-		go this.onPublish(msg)
-	}
-	return
+	msg.SetPayload(payload)
+	this.postPublish(msg)
 }
 
 //根据topic和payload 推送消息
-func (this *service) _publish_to_topic(topic string, payload []byte) {
+func (this *service) publishToTopic(topic string, payload []byte) {
 	Log.Debugc(func() string {
 		return fmt.Sprintf("(%s) send msg to topic: %s", this.cid(), topic)
 	})
 	tmp_msg := _get_tmp_msg()
 	tmp_msg.SetTopic([]byte(topic))
 	tmp_msg.SetPayload(payload)
-	this.onPublish(tmp_msg)
+	this.postPublish(tmp_msg)
 }
 
 // 当某个topic被订阅，处理此topic所对应的、离线消息队列里的消息
-func (this *service) _process_offline_message(topic string) (err error) {
+func (this *service) pushOfflineMessage(topic string) (err error) {
 	offline_msgs := getOfflineMsg(topic)
 	if offline_msgs == nil {
 		return nil
@@ -568,7 +508,7 @@ func (this *service) _process_offline_message(topic string) (err error) {
 	n := 0
 	for _, payload := range offline_msgs {
 		if payload != nil {
-			this._publish_to_topic(topic, payload)
+			this.publishToTopic(topic, payload)
 			n++
 		}
 	}
@@ -582,11 +522,96 @@ func (this *service) _process_offline_message(topic string) (err error) {
 }
 
 // 获取一个递增的pkgid
-func GetNextPktId() uint16 {
+func getNextPktId() uint16 {
 	atomic.AddUint32(&PktId, 1)
 
 	return (uint16)(PktId)
 }
+
+
+// processPublish() is called when the server receives a PUBLISH message AND have completed
+// the ack cycle. This method will get the list of subscribers based on the publish
+// topic, and publishes the message to the list of subscribers.
+func (this *service) postPublish(msg *message.PublishMessage) (err error) {
+	//   if msg.Retain() {
+	//     if err = this.topicsMgr.Retain(msg); err != nil {
+	//       Log.Errorc(func() string{ return fmt.Sprintf("(%s) Error retaining message: %v", this.cid(), err)})
+	//     }
+	//   }
+
+	//   var subs []interface{}
+	subs := _get_temp_subs()
+	defer _return_temp_subs(subs)
+
+	err = this.topicsMgr.Subscribers(msg.Topic(), msg.QoS(), &subs, nil)
+	if err != nil {
+		Log.Errorc(func() string { return fmt.Sprintf("(%s) Error retrieving subscribers list: %v", this.cid(), err) })
+		return err
+	}
+
+	//   Log.Errorc(func() string{ return fmt.Sprintf("(%s) Publishing to topic %q and %d subscribers", this.cid(), string(msg.Topic()), len(this.subs))})
+	//   fmt.Printf("value: %v\n", config.GetModel())
+	go this.handlePendingMessage(msg)
+
+	for _, s := range subs {
+		if s != nil {
+			fn, ok := s.(*OnPublishFunc)
+			if !ok {
+				Log.Errorc(func() string { return fmt.Sprintf("Invalid onPublish Function: %T", s) })
+				return fmt.Errorf("Invalid onPublish Function")
+			} else {
+				(*fn)(msg)
+				//         Log.Errorc(func() string{ return fmt.Sprintf("OfflineTopicQueue[%s]: %v, len is: %d\n", msg.Topic(), OfflineTopicQueue[string(msg.Topic())], len(OfflineTopicQueue[string(msg.Topic())]))})
+			}
+		}
+	}
+
+	return nil
+}
+
+
+// 处理苹果设备的未读数，修改redis
+func (this *service) processBadge(account_id string, badge_message *BadgeMessage) {
+	key := "badge_account:" + account_id
+	_, err := topics.RedisDo("set", key, badge_message.Data)
+	if err != nil {
+		Log.Errorc(func() string {
+			return fmt.Sprintf("(%s) can't set badge! account_id: %s, badge: %v", this.cid(), account_id, badge_message)
+		})
+	}
+}
+
+// 根据topic获取离线消息队列
+func getOfflineMsg(topic string) (msgs [][]byte) {
+	OfflieTopicRWmux.RLock()
+	q := OfflineTopicMap[topic]
+	OfflieTopicRWmux.RUnlock()
+
+	if q == nil {
+		msgs = nil
+	} else {
+		msgs = q.GetAll()
+	}
+
+	return msgs
+}
+
+//根据pkt_id，将pending队列里的该条消息移除
+func (this *service) processAck(pkt_id uint16) {
+	//   msg := PendingQueue[pkt_id]
+	//   if msg != nil {
+	//     msg.SetPayload(nil)
+	//   }
+	msg := PendingQueue[pkt_id]
+	_return_tmp_msg(msg)
+
+	PendingQueue[pkt_id] = nil
+
+	Log.Debugc(func() string {
+		return fmt.Sprintf("(%s) receive ack, remove msg from pending queue: %d", this.cid(), pkt_id)
+	})
+}
+
 
 // 判断消息是否已读
 func (this *service) handlePendingMessage(msg *message.PublishMessage) {
@@ -604,96 +629,95 @@ func (this *service) handlePendingMessage(msg *message.PublishMessage) {
 	if PendingQueue[pkt_id] != nil {
 		Log.Debugc(func() string {
 			return fmt.Sprintf("(%s) receive ack timeout. send msg to offline msg queue.topic: %s", this.cid(), msg.Topic())
+			//       return fmt.Sprintf("(%s) receive ack timeout. send msg to offline msg queue.topic: %s, payload: %s", this.cid(), msg.Topic(),msg.Payload())
 		})
 		PendingQueue[pkt_id] = nil
 		OfflineTopicQueueProcessor <- msg
 	}
 }
 
-// 处理苹果设备的未读数，修改redis
-func (this *service) handleBadge(account_id string, badge_message *BadgeMessage) {
-	key := "badge_account:" + account_id
-	_, err := topics.RedisDo("set", key, badge_message.Data)
-	if err != nil {
-		Log.Errorc(func() string {
-			return fmt.Sprintf("(%s) can't set badge! account_id: %s, badge: %v", this.cid(), account_id, badge_message)
-		})
-	}
-}
-
-// 根据topic获取离线消息队列
-// 由于不能并发读写，所以要借助channel来实现
-func getOfflineMsg(topic string) (msgs [][]byte) {
-	OfflieTopicRWmux.RLock()
-	q := OfflineTopicMap[topic]
-	OfflieTopicRWmux.RUnlock()
-
-	if q == nil {
-		msgs = nil
-	} else {
-		msgs = q.GetAll()
-	}
-
-	return msgs
-}
-
-//根据pkt_id，将pending队列里的该条消息移除
-func (this *service) _process_ack(pkg_id uint16) {
-	PendingQueue[pkg_id] = nil
-
-	Log.Debugc(func() string {
-		return fmt.Sprintf("(%s) receive ack, remove msg from pending queue: %d", this.cid(), pkg_id)
-	})
-}
-
 // 从池子里获取一个长度为1的slice，用于填充订阅队列
 func _get_temp_subs() (subs []interface{}) {
-	select {
-	case subs = <-SubscribersSliceQueue:
+	/*
+		select {
+		case subs = <-SubscribersSliceQueue:
 		// 成功从缓存池里拿到，直接返回
-	default:
-		// 拿不到，说明池子里没对象了，就地创建一个
-		sub_p := make([]interface{}, 1, 1)
-		return sub_p
-	}
-	return
+		default:
+			// 拿不到，说明池子里没对象了，就地创建一个
+			sub_p := make([]interface{}, 1, 1)
+			return sub_p
+		}
+	*/
+
+	return p.Get().([]interface{})
 }
 
 // 把subs返还池子
 func _return_temp_subs(subs []interface{}) {
-	subs[0] = nil
-	select {
-	case SubscribersSliceQueue <- subs:
+	/*
+		subs[0] = nil
+		select {
+		case SubscribersSliceQueue <- subs:
 		// 成功返还，什么都不做
-	default:
-		subs = nil
-		Log.Errorc(func() string {
-			return "return temp subs failed, may be the SubscribersSliceQueue is full!"
-		})
-	}
-	return
+		default:
+		}
+	*/
+	subs[0] = nil
+	p.Put(subs)
 }
 
 // 从池子里获取一个msg对象，用于打包
 func _get_tmp_msg() (msg *message.PublishMessage) {
-	select {
-	case msg = <-NewMessagesQueue:
-		msg.SetPacketId(GetNextPktId())
+	/*
+		select {
+		case msg = <-NewMessagesQueue:
+			msg.SetPacketId(GetNextPktId())
 		// 成功取到msg，什么都不做
-	default:
-		msg = message.NewPublishMessage()
-		msg.SetPacketId(GetNextPktId())
-		msg.SetQoS(message.QosAtLeastOnce)
-	}
+		default:
+			Log.Debugc(func() string {
+				return "no tmp msg in NewMsgQueue. will new it."
+			})
+			msg = message.NewPublishMessage()
+			msg.SetQoS(message.QosAtLeastOnce)
+			msg.SetPacketId(GetNextPktId())
+		}
+	*/
 
-	return
+	//FIXME!!
+	for {
+		msg = MessagePool.Get().(*message.PublishMessage)
+		if msg != nil {
+			msg.SetPacketId(getNextPktId())
+			return
+		}
+	}
 }
 
 func _return_tmp_msg(msg *message.PublishMessage) {
-	select {
-	case NewMessagesQueue <- msg:
+	/*
+		select {
+		case NewMessagesQueue <- msg:
 		//成功还回去了，什么都不做
+		default:
+		}
+	*/
+	//   mp.Put(msg)
+	select {
+	case OldMessagesQueue <- msg:
 	default:
-		msg = nil
 	}
 }
+
+type BroadCastMessage struct {
+	Clients []string `json:"clients"`
+	Payload string   `json:"payload"`
+}
+type MtBroadCastMessage struct {
+	Clients []string `json:"topics"`
+	Payload string   `json:"payload"`
+}
+type BadgeMessage struct {
+	Data int    `json:data`
+	Type string `json:type`
+}
+

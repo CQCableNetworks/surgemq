@@ -21,6 +21,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/nagae-memooff/surgemq/sessions"
 	"github.com/nagae-memooff/surgemq/topics"
@@ -132,7 +133,7 @@ func (this *service) start(client_id string) error {
 	// Create the incoming ring buffer
 	Log.Debugc(func() string { return fmt.Sprintf("make new buffer for client: %s", client_id) })
 
-	if strings.Contains(client_id, "master") {
+	if strings.HasPrefix(client_id, "master") || strings.HasPrefix(client_id, "ewhine") {
 		this.in, err = newBuffer(MasterInBufferSize)
 		if err != nil {
 			return err
@@ -179,6 +180,8 @@ func (this *service) start(client_id string) error {
 		}
 	}
 
+	SetOnlineStatus(client_id, true, time.Now())
+
 	// Processor is responsible for reading messages out of the buffer and processing
 	// them accordingly.
 	this.wgStarted.Add(1)
@@ -223,6 +226,8 @@ func (this *service) stop() {
 		close(this.done)
 	}
 
+	SetOnlineStatus(this.sess.ID(), false, time.Now())
+
 	// Close the network connection
 	if this.conn != nil {
 		Log.Debugc(func() string { return fmt.Sprintf("(%s) closing this.conn", this.cid()) })
@@ -258,22 +263,20 @@ func (this *service) stop() {
 	}
 
 	// Publish will message if WillFlag is set. Server side only.
-	if !this.client && this.sess.Cmsg.WillFlag() {
-		Log.Infoc(func() string {
-			return fmt.Sprintf("(%s) service/stop: connection unexpectedly closed. Sending Will.", this.cid())
-		})
-		this.onPublish(this.sess.Will)
-	}
+	//   if !this.client && this.sess.Cmsg.WillFlag() {
+	//     Log.Infoc(func() string {
+	//       return fmt.Sprintf("(%s) service/stop: connection unexpectedly closed. Sending Will.", this.cid())
+	//     })
+	//     this.onPublish(this.sess.Will)
+	//   }
 
 	// Remove the client topics manager
 	if this.client {
 		topics.Unregister(this.sess.ID())
 	}
 
-	// Remove the session from session store if it's suppose to be clean session
-	if this.sess.Cmsg.CleanSession() && this.sessMgr != nil {
-		this.sessMgr.Del(this.sess.ID())
-	}
+	// 无视clean session标记，永远清除session
+	this.sessMgr.Del(this.sess.ID())
 
 	this.conn = nil
 	this.in = nil
