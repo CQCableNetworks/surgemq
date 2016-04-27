@@ -6,7 +6,6 @@ import (
 )
 
 var (
-	//   OnlineStatusList           = NewOnlineList()
 	list map[string]*Status
 	lock sync.RWMutex
 )
@@ -16,7 +15,7 @@ type Status struct {
 	lastTime time.Time
 }
 
-func (this *Status) Online() bool {
+func (this *Status) IsOnline() bool {
 	if this == nil {
 		return false
 	} else {
@@ -24,8 +23,8 @@ func (this *Status) Online() bool {
 	}
 }
 
-func (this *Status) OnlineString() string {
-	if this.Online() {
+func (this *Status) OnlineStatus() string {
+	if this.IsOnline() {
 		return "online"
 	} else {
 		return "offline"
@@ -46,7 +45,7 @@ func GetOnlineStatus(key string) (online string, lasttime time.Time) {
 
 	status := list[key]
 
-	online = status.OnlineString()
+	online = status.OnlineStatus()
 	lasttime = status.LastTime()
 	return
 }

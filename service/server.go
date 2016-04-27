@@ -167,7 +167,7 @@ func (this *Server) ListenAndServe() error {
 					continue
 				}
 
-				go this._publish_to_topic(topic, payload)
+				go this.publishToTopic(topic, payload)
 			}
 
 			return
@@ -197,7 +197,7 @@ func (this *Server) ListenAndServe() error {
 			}
 
 			for _, topic := range broadcast_msg.Clients {
-				go this._publish_to_topic(topic, payload)
+				go this.publishToTopic(topic, payload)
 			}
 
 			return
