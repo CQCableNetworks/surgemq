@@ -288,7 +288,6 @@ func (this *service) processAcked(ackq *sessions.Ackqueue) {
 			}
 
 		case message.PUBACK, message.PUBCOMP, message.SUBACK, message.UNSUBACK, message.PINGRESP:
-			Log.Debugc(func() string { return fmt.Sprintf("process/processAcked: %s", ack) })
 			// If ack is PUBACK, that means the QoS 1 message sent by this service got
 			// ack'ed. There's nothing to do other than calling onComplete() below.
 
@@ -439,7 +438,6 @@ func (this *service) preDispatchPublish(msg *message.PublishMessage) (err error)
 	return
 }
 
-
 func (this *service) onReceiveBadge(msg *message.PublishMessage) (err error) {
 	var badge_message BadgeMessage
 
@@ -528,7 +526,6 @@ func getNextPktId() uint16 {
 	return (uint16)(PktId)
 }
 
-
 // processPublish() is called when the server receives a PUBLISH message AND have completed
 // the ack cycle. This method will get the list of subscribers based on the publish
 // topic, and publishes the message to the list of subscribers.
@@ -568,7 +565,6 @@ func (this *service) postPublish(msg *message.PublishMessage) (err error) {
 
 	return nil
 }
-
 
 // 处理苹果设备的未读数，修改redis
 func (this *service) processBadge(account_id string, badge_message *BadgeMessage) {
@@ -611,7 +607,6 @@ func (this *service) processAck(pkt_id uint16) {
 		return fmt.Sprintf("(%s) receive ack, remove msg from pending queue: %d", this.cid(), pkt_id)
 	})
 }
-
 
 // 判断消息是否已读
 func (this *service) handlePendingMessage(msg *message.PublishMessage) {
@@ -720,4 +715,3 @@ type BadgeMessage struct {
 	Data int    `json:data`
 	Type string `json:type`
 }
-
