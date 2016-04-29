@@ -180,6 +180,10 @@ func (this *service) start(client_id string) error {
 		}
 	}
 
+	Log.Infoc(func() string {
+		online, lasttime := GetOnlineStatus(client_id)
+		return fmt.Sprintf("(%s)is online. Last status: %s, %t", client_id, online, lasttime)
+	})
 	SetOnlineStatus(client_id, true, time.Now())
 
 	// Processor is responsible for reading messages out of the buffer and processing
@@ -226,6 +230,10 @@ func (this *service) stop() {
 		close(this.done)
 	}
 
+	Log.Infoc(func() string {
+		online, lasttime := GetOnlineStatus(this.sess.ID())
+		return fmt.Sprintf("(%s)is offline. Last status: %s, %t", this.sess.ID(), online, lasttime)
+	})
 	SetOnlineStatus(this.sess.ID(), false, time.Now())
 
 	// Close the network connection
