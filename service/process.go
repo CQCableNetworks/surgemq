@@ -20,7 +20,7 @@ import (
 	//   "encoding/json"
 	"errors"
 	"fmt"
-	"io"
+	//   "io"
 	"reflect"
 	"strings"
 	"sync"
@@ -103,15 +103,9 @@ func (this *service) processor() {
 		n, err := msg.Decode(*p)
 
 		if err != nil {
-			if err == io.EOF {
-				Log.Debugc(func() string {
-					return fmt.Sprintf("(%s) suddenly disconnect.", this.cid())
-				})
-			} else {
-				Log.Errorc(func() string {
-					return fmt.Sprintf("(%s) Error peeking next message: %v", this.cid(), err)
-				})
-			}
+			Log.Errorc(func() string {
+				return fmt.Sprintf("(%s) Error peeking next message: %v", this.cid(), err)
+			})
 			return
 		}
 		//     this.rmu.Unlock()

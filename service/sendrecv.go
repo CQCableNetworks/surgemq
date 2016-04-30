@@ -72,9 +72,7 @@ func (this *service) receiver() {
 			//       Log.Errorc(func() string{ return fmt.Sprintf("this.sessMgr is: %v", this.sessMgr)})
 
 			if err != nil {
-				if err != io.EOF {
-					Log.Infoc(func() string { return fmt.Sprintf("(%s) error reading from connection: %v", this.cid(), err) })
-				}
+				Log.Debugc(func() string { return fmt.Sprintf("(%s) error reading from connection: %v", this.cid(), err) })
 				return
 			}
 		}
@@ -110,9 +108,7 @@ func (this *service) sender() {
 			_, err := this.out.WriteTo(conn)
 
 			if err != nil {
-				if err != io.EOF {
-					Log.Errorc(func() string { return fmt.Sprintf("(%s) error writing data: %v", this.cid(), err) })
-				}
+				Log.Debugc(func() string { return fmt.Sprintf("(%s) error writing data: %v", this.cid(), err) })
 				return
 			}
 		}
