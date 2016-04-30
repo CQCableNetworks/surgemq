@@ -438,7 +438,7 @@ func (this *service) onReceiveBadge(msg *message.PublishMessage) (err error) {
 	datas := strings.Split(string(msg.Payload()), ":")
 	//   datas := strings.Split(fmt.Sprintf("%s", msg.Payload()), ":")
 	if len(datas) != 2 {
-		Log.Errorc(func() string { return fmt.Sprintf("invalid message payload: %s", msg.Payload()) })
+		Log.Errorc(func() string { return fmt.Sprintf("(%s) invalid message payload: %s", this.cid(), msg.Payload()) })
 		return errors.New(fmt.Sprintf("invalid message payload: %s", msg.Payload()))
 	}
 
@@ -446,18 +446,18 @@ func (this *service) onReceiveBadge(msg *message.PublishMessage) (err error) {
 	payload_base64 := datas[1]
 
 	if payload_base64 == "" {
-		return errors.New(fmt.Sprintf("blank base64 payload, abort. %s", msg.Payload()))
+		return errors.New(fmt.Sprintf("(%s) blank base64 payload, abort. %s", this.cid(), msg.Payload()))
 	}
 
 	payload_bytes, err := base64.StdEncoding.DecodeString(payload_base64)
 	if err != nil {
-		Log.Errorc(func() string { return fmt.Sprintf("can't decode payload: %s", payload_base64) })
+		Log.Errorc(func() string { return fmt.Sprintf("(%s) can't decode payload: %s", this.cid(), payload_base64) })
 	}
 
 	err = ffjson.Unmarshal([]byte(payload_bytes), &badge_message)
 	if err != nil {
 		Log.Errorc(func() string {
-			return fmt.Sprintf("can't parse message json: account_id: %s, payload: %s", account_id, payload_bytes)
+			return fmt.Sprintf("(%s) can't parse message json: account_id: %s, payload: %s", this.cid(), account_id, payload_bytes)
 		})
 		return
 	}
