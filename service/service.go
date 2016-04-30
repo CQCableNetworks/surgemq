@@ -180,12 +180,6 @@ func (this *service) start(client_id string) error {
 		}
 	}
 
-	Log.Infoc(func() string {
-		online, lasttime := GetOnlineStatus(client_id)
-		return fmt.Sprintf("(%s)is online. Last status: %s, %s", this.cid(), online, lasttime)
-	})
-	SetOnlineStatus(client_id, true, time.Now())
-
 	// Processor is responsible for reading messages out of the buffer and processing
 	// them accordingly.
 	this.wgStarted.Add(1)
@@ -203,6 +197,12 @@ func (this *service) start(client_id string) error {
 	this.wgStopped.Add(1)
 	go this.sender()
 
+	Log.Infoc(func() string {
+		online, lasttime := GetOnlineStatus(client_id)
+		return fmt.Sprintf("(%s)is online. Last status: %s, %s", this.cid(), online, lasttime)
+	})
+	SetOnlineStatus(client_id, true, time.Now())
+
 	// Wait for all the goroutines to start before returning
 	this.wgStarted.Wait()
 
@@ -219,6 +219,12 @@ func (this *service) stop() {
 		}
 	}()
 
+	Log.Infoc(func() string {
+		online, lasttime := GetOnlineStatus(this.sess.ID())
+		return fmt.Sprintf("(%s)is offline. Last status: %s, %s", this.cid(), online, lasttime)
+	})
+	SetOnlineStatus(this.sess.ID(), false, time.Now())
+
 	doit := atomic.CompareAndSwapInt64(&this.closed, 0, 1)
 	if !doit {
 		return
@@ -229,12 +235,6 @@ func (this *service) stop() {
 		Log.Debugc(func() string { return fmt.Sprintf("(%s) closing this.done", this.cid()) })
 		close(this.done)
 	}
-
-	Log.Infoc(func() string {
-		online, lasttime := GetOnlineStatus(this.sess.ID())
-		return fmt.Sprintf("(%s)is offline. Last status: %s, %s", this.cid(), online, lasttime)
-	})
-	SetOnlineStatus(this.sess.ID(), false, time.Now())
 
 	// Close the network connection
 	if this.conn != nil {
