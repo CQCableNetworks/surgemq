@@ -411,7 +411,8 @@ func (this *Server) handleConnection(c io.Closer) (err error) {
 	}
 
 	// Authenticate the user, if error, return error and exit
-	if err = this.authMgr.Authenticate(string(req.Username()), string(req.Password())); err != nil {
+	auth_info := auth.NewAuthInfo(string(req.Password()), string(req.ClientId()))
+	if err = this.authMgr.Authenticate(string(req.Username()), auth_info); err != nil {
 		Log.Infoc(func() string {
 			return fmt.Sprintf("client auth failed. username: %s, client_id: %s", req.Username(), req.ClientId())
 		})
