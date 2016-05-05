@@ -267,9 +267,9 @@ func init() {
 					return fmt.Sprintf("clean offlie topic queue: %s", topic)
 				})
 
-				OfflieTopicRWmux.RLock()
+				OfflineTopicRWmux.RLock()
 				q := OfflineTopicMap[topic]
-				OfflieTopicRWmux.RUnlock()
+				OfflineTopicRWmux.RUnlock()
 				if q != nil {
 					go q.Clean()
 				}
@@ -278,15 +278,15 @@ func init() {
 				//         topic := string(msg.Topic())
 				go func(topic string, payload []byte) {
 					//         func(topic string, payload []byte) {
-					OfflieTopicRWmux.RLock()
+					OfflineTopicRWmux.RLock()
 					q := OfflineTopicMap[topic]
-					OfflieTopicRWmux.RUnlock()
+					OfflineTopicRWmux.RUnlock()
 					if q == nil {
 						q = NewOfflineTopicQueue(Max_message_queue, topic)
 
-						OfflieTopicRWmux.Lock()
+						OfflineTopicRWmux.Lock()
 						OfflineTopicMap[topic] = q
-						OfflieTopicRWmux.Unlock()
+						OfflineTopicRWmux.Unlock()
 					}
 
 					Log.Debugc(func() string {

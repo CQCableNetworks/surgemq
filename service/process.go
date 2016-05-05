@@ -36,7 +36,7 @@ import (
 var (
 	errDisconnect       = errors.New("Disconnect")
 	MsgPendingTime      time.Duration
-	OfflieTopicRWmux    sync.RWMutex
+	OfflineTopicRWmux   sync.RWMutex
 	BroadCastChannel    string
 	SendChannel         string
 	ApnPushChannel      string
@@ -573,9 +573,9 @@ func (this *service) processBadge(account_id string, badge_message *BadgeMessage
 
 // 根据topic获取离线消息队列
 func getOfflineMsg(topic string) (msgs [][]byte) {
-	OfflieTopicRWmux.RLock()
+	OfflineTopicRWmux.RLock()
 	q := OfflineTopicMap[topic]
-	OfflieTopicRWmux.RUnlock()
+	OfflineTopicRWmux.RUnlock()
 
 	if q == nil {
 		msgs = nil
