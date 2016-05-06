@@ -482,5 +482,9 @@ func (this *service) isDone() bool {
 }
 
 func (this *service) cid() string {
-	return fmt.Sprintf("%d/%s", this.id, this.sess.ID())
+	sessID := "nil"
+	if this.sess != nil {
+		sessID = this.sess.ID()
+	}
+	return fmt.Sprintf("%d/%s", this.id, sessID)
 }
