@@ -481,9 +481,10 @@ func (this *service) isDone() bool {
 	return false
 }
 
-func (this *service) cid() string {
+func (this *service) cid() (cid string) {
 	if this == nil {
-		return "nil/nil"
+		cid = "nil/nil"
+		return
 	}
 
 	if this.sess == nil {
@@ -491,8 +492,9 @@ func (this *service) cid() string {
 			this.conn.Close()
 		}
 
-		return fmt.Sprintf("%d/nil", this.id)
+		cid = fmt.Sprintf("%d/nil", this.id)
 	} else {
-		return fmt.Sprintf("%d/%s", this.id, this.sess.ID())
+		cid = fmt.Sprintf("%d/%s", this.id, this.sess.ID())
 	}
+	return
 }
