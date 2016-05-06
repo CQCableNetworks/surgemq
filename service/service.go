@@ -482,6 +482,10 @@ func (this *service) isDone() bool {
 }
 
 func (this *service) cid() string {
+	if this != nil {
+		return "nil/nil"
+	}
+
 	sessID := "nil"
 	if this.sess != nil {
 		sessID = this.sess.ID()
