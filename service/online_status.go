@@ -1,6 +1,7 @@
 package service
 
 import (
+	"io"
 	"sync"
 	"time"
 )
@@ -13,6 +14,7 @@ var (
 type Status struct {
 	online   bool
 	lastTime time.Time
+	conn     *io.Closer
 }
 
 func (this *Status) IsOnline() bool {
@@ -39,7 +41,15 @@ func (this *Status) LastTime() (t time.Time) {
 	}
 }
 
-func GetOnlineStatus(key string) (online string, lasttime time.Time) {
+func (this *Status) Conn() *io.Closer {
+	if this == nil {
+		return nil
+	} else {
+		return this.conn
+	}
+}
+
+func GetOnlineStatus(key string) (online string, lasttime time.Time, conn *io.Closer) {
 	lock.RLock()
 	defer lock.RUnlock()
 
@@ -47,25 +57,28 @@ func GetOnlineStatus(key string) (online string, lasttime time.Time) {
 
 	online = status.OnlineStatus()
 	lasttime = status.LastTime()
+	conn = status.Conn()
 	return
 }
 
-func SetOnlineStatus(key string, online bool, lasttime time.Time) {
+func SetOnlineStatus(key string, online bool, lasttime time.Time, conn *io.Closer) {
 	lock.Lock()
+	defer lock.Unlock()
 	status := list[key]
 
 	if status == nil {
 		status = &Status{
 			online,
 			lasttime,
+			conn,
 		}
 		list[key] = status
 	} else {
 		status.online = online
 		status.lastTime = lasttime
+		status.conn = conn
 	}
 
-	lock.Unlock()
 }
 
 func init() {

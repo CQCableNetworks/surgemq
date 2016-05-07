@@ -198,10 +198,10 @@ func (this *service) start(client_id string) error {
 	go this.sender()
 
 	Log.Infoc(func() string {
-		online, lasttime := GetOnlineStatus(client_id)
+		online, lasttime, _ := GetOnlineStatus(client_id)
 		return fmt.Sprintf("(%s)is online. Last status: %s, %s", this.cid(), online, lasttime)
 	})
-	SetOnlineStatus(client_id, true, time.Now())
+	SetOnlineStatus(client_id, true, time.Now(), &(this.conn))
 
 	// Wait for all the goroutines to start before returning
 	this.wgStarted.Wait()
@@ -219,11 +219,14 @@ func (this *service) stop() {
 		}
 	}()
 
-	Log.Infoc(func() string {
-		online, lasttime := GetOnlineStatus(this.sess.ID())
-		return fmt.Sprintf("(%s)is offline. Last status: %s, %s", this.cid(), online, lasttime)
-	})
-	SetOnlineStatus(this.sess.ID(), false, time.Now())
+	online, lasttime, conn := GetOnlineStatus(this.sess.ID())
+	if conn == &(this.conn) {
+		Log.Infoc(func() string {
+			return fmt.Sprintf("(%s)is offline. Last status: %s, %s", this.cid(), online, lasttime)
+		})
+
+		SetOnlineStatus(this.sess.ID(), false, time.Now(), &(this.conn))
+	}
 
 	doit := atomic.CompareAndSwapInt64(&this.closed, 0, 1)
 	if !doit {

@@ -469,7 +469,7 @@ func (this *service) onReceiveBadge(msg *message.PublishMessage) (err error) {
 func (this *service) checkOnlineStatus(msg *message.PublishMessage) {
 	//TODO 优化
 	client_id := string(msg.Payload())
-	online, lasttime := GetOnlineStatus(client_id)
+	online, lasttime, _ := GetOnlineStatus(client_id)
 
 	payload := []byte(fmt.Sprintf(`{"client_id": "%s", "status": "%s", "since": "%s"}`, client_id, online, lasttime))
 
