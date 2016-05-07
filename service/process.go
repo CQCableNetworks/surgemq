@@ -539,7 +539,11 @@ func (this *service) postPublish(msg *message.PublishMessage) (err error) {
 
 	//   Log.Errorc(func() string{ return fmt.Sprintf("(%s) Publishing to topic %q and %d subscribers", this.cid(), string(msg.Topic()), len(this.subs))})
 	//   fmt.Printf("value: %v\n", config.GetModel())
-	go this.handlePendingMessage(msg)
+	done := make(chan bool)
+	pkt_id := msg.PacketId()
+	PendingQueue[pkt_id] = done
+
+	go this.handlePendingMessage(msg, done)
 
 	for _, s := range subs {
 		if s != nil {
@@ -597,15 +601,15 @@ func (this *service) processAck(pkt_id uint16) {
 			return fmt.Sprintf("(%s) receive ack, remove msg from pending queue: %d", this.cid(), pkt_id)
 		})
 	default:
-		// NOTE 什么情况下会导致放不进去？
 		//说明有问题，只有两种情况： 堵死或者nil。
 		if done == nil {
+			// NOTE 什么情况下会导致放不进去？
 			Log.Errorc(func() string {
-				return fmt.Sprintf("(%s) receive ack, but this pkt_id in queue is nil! ", this.cid(), pkt_id)
+				return fmt.Sprintf("(%s) receive ack, but this pkt_id %d in queue is nil! ", this.cid(), pkt_id)
 			})
 		} else {
 			Log.Errorc(func() string {
-				return fmt.Sprintf("(%s) receive ack, but this pkt_id in queue is full! ", this.cid(), pkt_id)
+				return fmt.Sprintf("(%s) receive ack, but this pkt_id %d in queue is full! ", this.cid(), pkt_id)
 			})
 		}
 	}
@@ -616,7 +620,7 @@ func (this *service) processAck(pkt_id uint16) {
 }
 
 // 判断消息是否已读
-func (this *service) handlePendingMessage(msg *message.PublishMessage) {
+func (this *service) handlePendingMessage(msg *message.PublishMessage, done_channel chan (bool)) {
 	// 如果QOS=0,则无需等待直接返回
 	if msg.QoS() == message.QosAtMostOnce {
 		return
@@ -626,11 +630,9 @@ func (this *service) handlePendingMessage(msg *message.PublishMessage) {
 	// 如果指定时间后，msg仍然在队列中，说明未收到回包，需要将消息放到OfflineTopicQueueProcessor中处理
 	pkt_id := msg.PacketId()
 	//   pending_msg := NewPendingMessage(msg)
-	done := make(chan bool)
-	PendingQueue[pkt_id] = done
 
 	select {
-	case <-done:
+	case <-done_channel:
 		// 消息已成功接收，不再等待
 	case <-time.After(time.Second * MsgPendingTime):
 		// 没有回ack，放到离线队列里
