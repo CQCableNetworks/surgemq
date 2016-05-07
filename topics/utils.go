@@ -26,9 +26,6 @@ func NewRedisPool() *redis.Pool {
 				c, err = redis.Dial("tcp", redis_host)
 			}
 
-			if err != nil {
-				panic(err.Error())
-			}
 			return c, err
 		},
 	}
