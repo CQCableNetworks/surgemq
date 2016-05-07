@@ -149,6 +149,7 @@ func (this *service) processIncoming(msg message.Message) error {
 		//     Log.Errorc(func() string{ return fmt.Sprintf("this.subs is: %v,  count is %d, msg_type is %T", this.subs, len(this.subs), msg)})
 		// For PUBACK message, it means QoS 1, we should send to ack queue
 		//     Log.Errorc(func() string{ return fmt.Sprintf("\n%T:%d==========\nmsg is %v\n=====================", *msg, msg.PacketId(), *msg)})
+		//FIXME: ack伪造攻击
 		go this.processAck(msg.PacketId())
 		this.sess.Pub1ack.Ack(msg)
 		this.processAcked(this.sess.Pub1ack)
@@ -539,11 +540,12 @@ func (this *service) postPublish(msg *message.PublishMessage) (err error) {
 
 	//   Log.Errorc(func() string{ return fmt.Sprintf("(%s) Publishing to topic %q and %d subscribers", this.cid(), string(msg.Topic()), len(this.subs))})
 	//   fmt.Printf("value: %v\n", config.GetModel())
-	done := make(chan bool)
+	//   done := make(chan bool)
+	pending_status := NewPendingStatus(string(msg.Topic()))
 	pkt_id := msg.PacketId()
-	PendingQueue[pkt_id] = done
+	PendingQueue[pkt_id] = pending_status
 
-	go this.handlePendingMessage(msg, done)
+	go this.handlePendingMessage(msg, pending_status)
 
 	for _, s := range subs {
 		if s != nil {
@@ -593,34 +595,45 @@ func (this *service) processAck(pkt_id uint16) {
 	//   if msg != nil {
 	//     msg.SetPayload(nil)
 	//   }
-	done := PendingQueue[pkt_id]
+	pending_status := PendingQueue[pkt_id]
+	if pending_status == nil {
+		// NOTE ios 旧版，mosquitto的bug会导致回ack包的时候，早已超时了
+		// 此外网络特别慢也有可能
+		// 导致收到ack的时候，按照对应的pkt_id，找不到东西
+		Log.Errorc(func() string {
+			return fmt.Sprintf("(%s) receive ack, but this pkt_id %d in queue is nil! ", this.cid(), pkt_id)
+		})
+
+		return
+	}
+
+	topic := topics.GetUserTopic(this.sess.ID())
+	if pending_status.Topic != topic {
+		// ack包的topic,与登记的不一致
+		Log.Errorc(func() string {
+			return fmt.Sprintf("(%s) receive ack, but the topic %s and %s is mismatch. ", this.cid(), pending_status.Topic, topic)
+		})
+		return
+	}
 
 	select {
-	case done <- true:
+	case pending_status.Done <- true:
 		Log.Debugc(func() string {
 			return fmt.Sprintf("(%s) receive ack, remove msg from pending queue: %d", this.cid(), pkt_id)
 		})
 	default:
 		//说明有问题，只有两种情况： 堵死或者nil。
-		if done == nil {
-			// NOTE 什么情况下会导致放不进去？
-			Log.Errorc(func() string {
-				return fmt.Sprintf("(%s) receive ack, but this pkt_id %d in queue is nil! ", this.cid(), pkt_id)
-			})
-		} else {
-			Log.Errorc(func() string {
-				return fmt.Sprintf("(%s) receive ack, but this pkt_id %d in queue is full! ", this.cid(), pkt_id)
-			})
-		}
+		Log.Errorc(func() string {
+			return fmt.Sprintf("(%s) receive ack, but this pkt_id %d in queue is %v. ", this.cid(), pkt_id, pending_status)
+		})
 	}
 	//   _return_tmp_msg(pending_msg.Msg)
 
 	//   PendingQueue[pkt_id] = nil
-
 }
 
 // 判断消息是否已读
-func (this *service) handlePendingMessage(msg *message.PublishMessage, done_channel chan (bool)) {
+func (this *service) handlePendingMessage(msg *message.PublishMessage, pending_status *PendingStatus) {
 	// 如果QOS=0,则无需等待直接返回
 	if msg.QoS() == message.QosAtMostOnce {
 		return
@@ -632,7 +645,7 @@ func (this *service) handlePendingMessage(msg *message.PublishMessage, done_chan
 	//   pending_msg := NewPendingMessage(msg)
 
 	select {
-	case <-done_channel:
+	case <-pending_status.Done:
 		// 消息已成功接收，不再等待
 	case <-time.After(time.Second * MsgPendingTime):
 		// 没有回ack，放到离线队列里

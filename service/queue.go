@@ -10,7 +10,7 @@ import (
 )
 
 var (
-	PendingQueue = make([]chan (bool), 65536, 65536)
+	PendingQueue = make([]*PendingStatus, 65536, 65536)
 	//   PendingProcessor = make(chan *message.PublishMessage, 65536)
 
 	OfflineTopicMap            = make(map[string]*OfflineTopicQueue)
@@ -28,6 +28,18 @@ var (
 	Max_message_queue int
 	MessageQueueStore string
 )
+
+type PendingStatus struct {
+	Done  chan (bool)
+	Topic string
+}
+
+func NewPendingStatus(topic string) *PendingStatus {
+	return &PendingStatus{
+		Done:  make(chan bool),
+		Topic: topic,
+	}
+}
 
 type ClientHash struct {
 	Name string
