@@ -10,7 +10,7 @@ import (
 )
 
 var (
-	PendingQueue = make([]*message.PublishMessage, 65536, 65536)
+	PendingQueue = make([]chan (bool), 65536, 65536)
 	//   PendingProcessor = make(chan *message.PublishMessage, 65536)
 
 	OfflineTopicMap            = make(map[string]*OfflineTopicQueue)
@@ -72,7 +72,6 @@ func NewOfflineTopicQueue(length int, topic string) (mq *OfflineTopicQueue) {
 }
 
 // 向队列中添加消息
-//NOTE 因为目前是在channel中操作，所以无需加锁。如果需要并发访问，则需要加锁了。
 func (this *OfflineTopicQueue) Add(msg_bytes []byte) {
 	this.lock.Lock()
 	defer this.lock.Unlock()

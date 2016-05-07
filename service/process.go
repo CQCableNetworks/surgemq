@@ -83,9 +83,6 @@ func (this *service) processor() {
 		})
 	}()
 
-	//   Log.Debugc(func() string{ return fmt.Sprintf("(%s) Starting processor", this.cid())})
-	//   Log.Errorc(func() string{ return fmt.Sprintf("PendingQueue: %v", PendingQueue[0:10])})
-
 	this.wgStarted.Done()
 
 	for {
@@ -592,14 +589,30 @@ func (this *service) processAck(pkt_id uint16) {
 	//   if msg != nil {
 	//     msg.SetPayload(nil)
 	//   }
-	msg := PendingQueue[pkt_id]
-	_return_tmp_msg(msg)
+	done := PendingQueue[pkt_id]
 
-	PendingQueue[pkt_id] = nil
+	select {
+	case done <- true:
+		Log.Debugc(func() string {
+			return fmt.Sprintf("(%s) receive ack, remove msg from pending queue: %d", this.cid(), pkt_id)
+		})
+	default:
+		// NOTE 什么情况下会导致放不进去？
+		//说明有问题，只有两种情况： 堵死或者nil。
+		if done == nil {
+			Log.Errorc(func() string {
+				return fmt.Sprintf("(%s) receive ack, but this pkt_id in queue is nil! ", this.cid(), pkt_id)
+			})
+		} else {
+			Log.Errorc(func() string {
+				return fmt.Sprintf("(%s) receive ack, but this pkt_id in queue is full! ", this.cid(), pkt_id)
+			})
+		}
+	}
+	//   _return_tmp_msg(pending_msg.Msg)
 
-	Log.Debugc(func() string {
-		return fmt.Sprintf("(%s) receive ack, remove msg from pending queue: %d", this.cid(), pkt_id)
-	})
+	//   PendingQueue[pkt_id] = nil
+
 }
 
 // 判断消息是否已读
@@ -612,17 +625,22 @@ func (this *service) handlePendingMessage(msg *message.PublishMessage) {
 	// 将msg按照pkt_id，存入pending队列
 	// 如果指定时间后，msg仍然在队列中，说明未收到回包，需要将消息放到OfflineTopicQueueProcessor中处理
 	pkt_id := msg.PacketId()
-	PendingQueue[pkt_id] = msg
+	//   pending_msg := NewPendingMessage(msg)
+	done := make(chan bool)
+	PendingQueue[pkt_id] = done
 
-	time.Sleep(time.Second * MsgPendingTime)
-	if PendingQueue[pkt_id] != nil {
+	select {
+	case <-done:
+		// 消息已成功接收，不再等待
+	case <-time.After(time.Second * MsgPendingTime):
+		// 没有回ack，放到离线队列里
 		Log.Debugc(func() string {
 			return fmt.Sprintf("(%s) receive ack timeout. send msg to offline msg queue.topic: %s", this.cid(), msg.Topic())
 			//       return fmt.Sprintf("(%s) receive ack timeout. send msg to offline msg queue.topic: %s, payload: %s", this.cid(), msg.Topic(),msg.Payload())
 		})
-		PendingQueue[pkt_id] = nil
 		OfflineTopicQueueProcessor <- msg
 	}
+	PendingQueue[pkt_id] = nil
 }
 
 // 从池子里获取一个长度为1的slice，用于填充订阅队列
