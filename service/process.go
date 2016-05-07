@@ -454,7 +454,7 @@ func (this *service) onReceiveBadge(msg *message.PublishMessage) (err error) {
 	err = ffjson.Unmarshal([]byte(payload_bytes), &badge_message)
 	if err != nil {
 		Log.Errorc(func() string {
-			return fmt.Sprintf("(%s) can't parse message json: account_id: %s, payload: %s", this.cid(), account_id, payload_bytes)
+			return fmt.Sprintf("(%s) can't parse badge json: account_id: %s, payload: %s", this.cid(), account_id, payload_bytes)
 		})
 		return
 	}
