@@ -322,7 +322,7 @@ func (this *buffer) WriteTo(w io.Writer) (int64, error) {
 			total += int64(n)
 			//Log.Debugc(func() string{ return fmt.Sprintf("Wrote %d bytes, totaling %d bytes", n, total)})
 			//清理指针p
-			p=nil
+			p = nil
 			if err != nil {
 				return total, err
 			}
