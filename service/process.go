@@ -98,7 +98,8 @@ func (this *service) processor() {
 
 		msg, err := mtype.New()
 		n, err := msg.Decode(*p)
-
+		//清理指正p
+		p = nil
 		if err != nil {
 			Log.Errorc(func() string {
 				return fmt.Sprintf("(%s) Error peeking next message: %v", this.cid(), err)
@@ -298,7 +299,9 @@ func (this *service) processAcked(ackq *sessions.Ackqueue) {
 			err = nil
 
 		default:
-			Log.Errorc(func() string { return fmt.Sprintf("(%s) Invalid ack message type %s.", this.cid(), ackmsg.State) })
+			Log.Errorc(func() string {
+				return fmt.Sprintf("(%s) Invalid ack message type %s.", this.cid(), ackmsg.State)
+			})
 			continue
 		}
 
@@ -311,7 +314,9 @@ func (this *service) processAcked(ackq *sessions.Ackqueue) {
 				})
 			} else if onComplete != nil {
 				if err := onComplete(msg, ack, nil); err != nil {
-					Log.Errorc(func() string { return fmt.Sprintf("process/processAcked: Error running onComplete(): %v", err) })
+					Log.Errorc(func() string {
+						return fmt.Sprintf("process/processAcked: Error running onComplete(): %v", err)
+					})
 				}
 			}
 		}
@@ -371,11 +376,15 @@ func (this *service) processSubscribe(msg *message.SubscribeMessage) error {
 		rqos, err := this.topicsMgr.Subscribe(t, qos[i], &this.onpub, this.sess.ID())
 		//     rqos, err := this.topicsMgr.Subscribe(t, qos[i], &this)
 		if err != nil {
-			Log.Errorc(func() string { return fmt.Sprintf("(%s) subscribe topic %s failed: %s", this.cid(), t, err) })
+			Log.Errorc(func() string {
+				return fmt.Sprintf("(%s) subscribe topic %s failed: %s", this.cid(), t, err)
+			})
 			this.stop()
 			return err
 		}
-		Log.Infoc(func() string { return fmt.Sprintf("(%s) subscribe topic %s", this.cid(), t) })
+		Log.Infoc(func() string {
+			return fmt.Sprintf("(%s) subscribe topic %s", this.cid(), t)
+		})
 		this.sess.AddTopic(string(t), qos[i])
 
 		retcodes = append(retcodes, rqos)
@@ -420,7 +429,7 @@ func (this *service) preDispatchPublish(msg *message.PublishMessage) (err error)
 	case SendChannel:
 		go this.onReceiveBadge(msg)
 	case ApnPushChannel:
-		// TODO 处理苹果推送
+	// TODO 处理苹果推送
 	case OnlineStatusChannel:
 		go this.checkOnlineStatus(msg)
 	default:
@@ -436,7 +445,9 @@ func (this *service) onReceiveBadge(msg *message.PublishMessage) (err error) {
 	datas := strings.Split(string(msg.Payload()), ":")
 	//   datas := strings.Split(fmt.Sprintf("%s", msg.Payload()), ":")
 	if len(datas) != 2 {
-		Log.Errorc(func() string { return fmt.Sprintf("(%s) invalid message payload: %s", this.cid(), msg.Payload()) })
+		Log.Errorc(func() string {
+			return fmt.Sprintf("(%s) invalid message payload: %s", this.cid(), msg.Payload())
+		})
 		return errors.New(fmt.Sprintf("invalid message payload: %s", msg.Payload()))
 	}
 
@@ -449,7 +460,9 @@ func (this *service) onReceiveBadge(msg *message.PublishMessage) (err error) {
 
 	payload_bytes, err := base64.StdEncoding.DecodeString(payload_base64)
 	if err != nil {
-		Log.Errorc(func() string { return fmt.Sprintf("(%s) can't decode payload: %s", this.cid(), payload_base64) })
+		Log.Errorc(func() string {
+			return fmt.Sprintf("(%s) can't decode payload: %s", this.cid(), payload_base64)
+		})
 	}
 
 	err = ffjson.Unmarshal([]byte(payload_bytes), &badge_message)
@@ -534,7 +547,9 @@ func (this *service) postPublish(msg *message.PublishMessage) (err error) {
 
 	err = this.topicsMgr.Subscribers(msg.Topic(), msg.QoS(), &subs, nil)
 	if err != nil {
-		Log.Errorc(func() string { return fmt.Sprintf("(%s) Error retrieving subscribers list: %v", this.cid(), err) })
+		Log.Errorc(func() string {
+			return fmt.Sprintf("(%s) Error retrieving subscribers list: %v", this.cid(), err)
+		})
 		return err
 	}
 
@@ -551,7 +566,9 @@ func (this *service) postPublish(msg *message.PublishMessage) (err error) {
 		if s != nil {
 			fn, ok := s.(*OnPublishFunc)
 			if !ok {
-				Log.Errorc(func() string { return fmt.Sprintf("Invalid onPublish Function: %T", s) })
+				Log.Errorc(func() string {
+					return fmt.Sprintf("Invalid onPublish Function: %T", s)
+				})
 				return fmt.Errorf("Invalid onPublish Function")
 			} else {
 				(*fn)(msg)
@@ -646,7 +663,7 @@ func (this *service) handlePendingMessage(msg *message.PublishMessage, pending_s
 
 	select {
 	case <-pending_status.Done:
-		// 消息已成功接收，不再等待
+	// 消息已成功接收，不再等待
 	case <-time.After(time.Second * MsgPendingTime):
 		// 没有回ack，放到离线队列里
 		Log.Debugc(func() string {
