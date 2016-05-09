@@ -327,8 +327,6 @@ func (this *buffer) WriteTo(w io.Writer) (int64, error) {
 				return total, err
 			}
 		}
-		//清理指针p
-		p=nil
 	}
 }
 
