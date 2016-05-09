@@ -419,6 +419,7 @@ func (this *Server) handleConnection(c io.Closer) (err error) {
 		resp.SetReturnCode(message.ErrBadUsernameOrPassword)
 		resp.SetSessionPresent(false)
 		writeMessage(conn, resp)
+		time.Sleep(3 * time.Second)
 		return err
 	}
 
