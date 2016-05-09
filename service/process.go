@@ -98,7 +98,7 @@ func (this *service) processor() {
 
 		msg, err := mtype.New()
 		n, err := msg.Decode(*p)
-		//清理指正p
+		//清理指针p
 		p = nil
 		if err != nil {
 			Log.Errorc(func() string {
