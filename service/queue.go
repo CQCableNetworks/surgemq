@@ -27,6 +27,7 @@ var (
 
 	Max_message_queue int
 	MessageQueueStore string
+	temp_bytes        *sync.Pool
 )
 
 type PendingStatus struct {
@@ -131,7 +132,13 @@ func (this *OfflineTopicQueue) Clean() {
 	defer this.lock.Unlock()
 	switch MessageQueueStore {
 	case "local":
-		this.Q = nil
+		if this.Length == Max_message_queue {
+			for i, _ := range this.Q {
+				this.Q[i] = nil
+			}
+		} else {
+			this.Q = nil
+		}
 	case "redis":
 		keys := make([]interface{}, this.Length, this.Length)
 		for i := 0; i < this.Length; i++ {
@@ -143,6 +150,7 @@ func (this *OfflineTopicQueue) Clean() {
 
 	this.Pos = 0
 	this.Cleaned = true
+	this.Length = Max_message_queue
 	this.Gziped = OfflineTopicPayloadUseGzip
 }
 
@@ -153,7 +161,9 @@ func (this *OfflineTopicQueue) GetAll() (msg_bytes [][]byte) {
 		this.lock.RLock()
 		defer this.lock.RUnlock()
 
-		msg_bytes = make([][]byte, this.Length, this.Length)
+		//     msg_bytes = make([][]byte, this.Length, this.Length)
+		msg_bytes = temp_bytes.Get().([][]byte)
+
 		switch MessageQueueStore {
 		case "local":
 			msg_bytes = this.Q[this.Pos:this.Length]
@@ -256,6 +266,13 @@ func init() {
 			NewMessagesQueue <- tmp_msg
 		}
 	*/
+
+	temp_bytes = &sync.Pool{
+		New: func() interface{} {
+			return make([][]byte, Max_message_queue, Max_message_queue)
+		},
+	}
+
 	go func() {
 		for {
 			select {
