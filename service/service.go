@@ -485,6 +485,14 @@ func (this *service) isDone() bool {
 }
 
 func (this *service) cid() (cid string) {
+	defer func() {
+		if r := recover(); r != nil {
+			Log.Errorc(func() string {
+				return fmt.Sprintf("panic in cid(): %s", r)
+			})
+		}
+	}()
+
 	if this == nil {
 		cid = "nil/nil"
 		return
