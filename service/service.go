@@ -488,7 +488,7 @@ func (this *service) cid() (cid string) {
 	defer func() {
 		if r := recover(); r != nil {
 			Log.Errorc(func() string {
-				return fmt.Sprintf("panic in cid(): %s", r)
+				return fmt.Sprintf("panic in cid() method: %s", r)
 			})
 		}
 	}()
