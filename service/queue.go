@@ -193,9 +193,6 @@ func (this *OfflineTopicQueue) GetAll() (msg_bytes [][]byte) {
 				keys = append(keys, this.RedisKey(i))
 			}
 
-			Log.Infoc(func() string { return fmt.Sprintf("取出了 %d 条消息", len(keys)) })
-			Log.Infoc(func() string { return fmt.Sprintf("%v", keys) })
-
 			var err error
 			msg_bytes, err = topics.RedisDoGetMultiByteSlice("mget", keys...)
 			if err != nil {
