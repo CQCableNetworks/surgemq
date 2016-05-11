@@ -104,14 +104,24 @@ func (this *OfflineTopicQueue) Add(msg_bytes []byte) {
 		case "local":
 			this.Q[this.Pos] = mb
 		case "redis":
-			topics.RedisDo("set", this.RedisKey(this.Pos), mb)
+			_, err := topics.RedisDo("set", this.RedisKey(this.Pos), mb)
+			if err != nil {
+				Log.Errorc(func() string {
+					return fmt.Sprintf("failed to save offline msg to redis: %s", err.Error())
+				})
+			}
 		}
 	} else {
 		switch MessageQueueStore {
 		case "local":
 			this.Q[this.Pos] = msg_bytes
 		case "redis":
-			topics.RedisDo("set", this.RedisKey(this.Pos), msg_bytes)
+			_, err := topics.RedisDo("set", this.RedisKey(this.Pos), msg_bytes)
+			if err != nil {
+				Log.Errorc(func() string {
+					return fmt.Sprintf("failed to save offline msg to redis: %s", err.Error())
+				})
+			}
 		}
 	}
 
@@ -145,7 +155,12 @@ func (this *OfflineTopicQueue) Clean() {
 			keys[i] = this.RedisKey(i)
 		}
 
-		topics.RedisDo("del", keys...)
+		_, err := topics.RedisDo("del", keys...)
+		if err != nil {
+			Log.Errorc(func() string {
+				return fmt.Sprintf("failed to clean offline msg to redis: %s", err.Error())
+			})
+		}
 	}
 
 	this.Pos = 0
