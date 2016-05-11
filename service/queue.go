@@ -177,20 +177,24 @@ func (this *OfflineTopicQueue) GetAll() (msg_bytes [][]byte) {
 		defer this.lock.RUnlock()
 
 		//     msg_bytes = make([][]byte, this.Length, this.Length)
-		msg_bytes = temp_bytes.Get().([][]byte)
+		//     msg_bytes = temp_bytes.Get().([][]byte)
+		var msg_bytes [][]byte
 
 		switch MessageQueueStore {
 		case "local":
 			msg_bytes = this.Q[this.Pos:this.Length]
 			msg_bytes = append(msg_bytes, this.Q[0:this.Pos]...)
 		case "redis":
-			keys := make([]interface{}, this.Length, this.Length)
+			var keys []interface{}
 			for i := this.Pos; i < this.Length; i++ {
 				keys = append(keys, this.RedisKey(i))
 			}
 			for i := 0; i < this.Pos; i++ {
 				keys = append(keys, this.RedisKey(i))
 			}
+
+			Log.Infoc(func() string { return fmt.Sprintf("取出了 %d 条消息", len(keys)) })
+			Log.Infoc(func() string { return fmt.Sprintf("%v", keys) })
 
 			var err error
 			msg_bytes, err = topics.RedisDoGetMultiByteSlice("mget", keys...)
