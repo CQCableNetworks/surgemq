@@ -5,6 +5,7 @@ import (
 	"github.com/garyburd/redigo/redis"
 	"github.com/nagae-memooff/config"
 	"strings"
+	"time"
 )
 
 func NewRedisPool() *redis.Pool {
@@ -28,6 +29,10 @@ func NewRedisPool() *redis.Pool {
 
 			return c, err
 		},
+		TestOnBorrow: func(c redis.Conn, t time.Time) error {
+			_, err := c.Do("PING")
+			return err
+		},
 	}
 }
 
@@ -35,46 +40,37 @@ func RedisDo(cmd string, args ...interface{}) (data string, err error) {
 	c := RedisPool.Get()
 	defer c.Close()
 
-	data_origin, err := c.Do(cmd, args...)
+	data, err = redis.String(c.Do(cmd, args...))
 	if err != nil {
 		fmt.Println(err)
-		return
 	}
 
-	data_byte, ok := data_origin.([]byte)
-	if !ok {
-		return
+	return
+}
+
+func RedisDoDel(args ...interface{}) (data int, err error) {
+	c := RedisPool.Get()
+	defer c.Close()
+
+	data, err = redis.Int(c.Do("del", args...))
+	if err != nil {
+		fmt.Println(err)
 	}
 
-	return (string)(data_byte), nil
+	return
 }
 
 func GetClientIDandChannels() (client_ids []string, channels []interface{}, err error) {
 	c := RedisPool.Get()
 	defer c.Close()
 
-	data_origin, err := c.Do("keys", "channel:*")
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
+	data, err := redis.Strings(c.Do("keys", "channel:*"))
 
-	data_ary, ok := data_origin.([]interface{})
-	if !ok {
-		return
-	}
+	for _, channel := range data {
+		channels = append(channels, channel)
 
-	for _, v := range data_ary {
-		value, ok := v.([]uint8)
-		if ok {
-			channel := string(value)
-			channels = append(channels, channel)
-
-			client_id := strings.Split(channel, ":")[1]
-			client_ids = append(client_ids, client_id)
-		} else {
-			fmt.Printf("invalid client_id: type:%T, value: %v\n", v, v)
-		}
+		client_id := strings.Split(channel, ":")[1]
+		client_ids = append(client_ids, client_id)
 	}
 	return
 }
@@ -84,26 +80,11 @@ func RedisDoGetMulti(cmd string, args ...interface{}) (data []string, err error)
 	defer c.Close()
 
 	//   data_origin, err := c.Do("keys", "channel:*")
-	data_origin, err := c.Do(cmd, args...)
+	data, err = redis.Strings(c.Do(cmd, args...))
 	if err != nil {
 		fmt.Println(err)
-		return
 	}
 
-	data_ary, ok := data_origin.([]interface{})
-	if !ok {
-		return
-	}
-
-	for _, v := range data_ary {
-		value, ok := v.([]uint8)
-		if ok {
-			data = append(data, string(value))
-		} else {
-			fmt.Printf("invalid data: type:%T, value: %v\n", v, v)
-			//       data = append(data, "")
-		}
-	}
 	return
 }
 
@@ -112,22 +93,10 @@ func RedisDoGetMultiByteSlice(cmd string, args ...interface{}) (data [][]byte, e
 	defer c.Close()
 
 	//   data_origin, err := c.Do("keys", "channel:*")
-	data_origin, err := c.Do(cmd, args...)
+	data, err = redis.ByteSlices(c.Do(cmd, args...))
 	if err != nil {
 		fmt.Println(err)
-		return
 	}
 
-	data_ary, ok := data_origin.([]interface{})
-	if !ok {
-		return
-	}
-
-	for _, v := range data_ary {
-		value, ok := v.([]uint8)
-		if ok {
-			data = append(data, []byte(value))
-		}
-	}
 	return
 }
