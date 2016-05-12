@@ -34,12 +34,14 @@ var (
 type PendingStatus struct {
 	Done  chan (bool)
 	Topic string
+	Msg   *message.PublishMessage
 }
 
-func NewPendingStatus(topic string) *PendingStatus {
+func NewPendingStatus(topic string, msg *message.PublishMessage) *PendingStatus {
 	return &PendingStatus{
 		Done:  make(chan bool),
 		Topic: topic,
+		Msg:   msg,
 	}
 }
 

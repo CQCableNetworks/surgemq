@@ -503,7 +503,7 @@ func (this *service) publishToTopic(topic string, payload []byte) {
 
 // 当某个topic被订阅，处理此topic所对应的、离线消息队列里的消息
 func (this *service) pushOfflineMessage(topic string) (err error) {
-	offline_msgs := getOfflineMsg(topic)
+	offline_msgs := this.getOfflineMsg(topic)
 	if offline_msgs == nil {
 		return nil
 	}
@@ -560,7 +560,7 @@ func (this *service) postPublish(msg *message.PublishMessage) (err error) {
 	//   Log.Errorc(func() string{ return fmt.Sprintf("(%s) Publishing to topic %q and %d subscribers", this.cid(), string(msg.Topic()), len(this.subs))})
 	//   fmt.Printf("value: %v\n", config.GetModel())
 	//   done := make(chan bool)
-	pending_status := NewPendingStatus(string(msg.Topic()))
+	pending_status := NewPendingStatus(string(msg.Topic()), msg)
 	pkt_id := msg.PacketId()
 	PendingQueue[pkt_id] = pending_status
 
@@ -596,7 +596,7 @@ func (this *service) processBadge(account_id string, badge_message *BadgeMessage
 }
 
 // 根据topic获取离线消息队列
-func getOfflineMsg(topic string) (msgs [][]byte) {
+func (this *service) getOfflineMsg(topic string) (msgs [][]byte) {
 	OfflineTopicRWmux.RLock()
 	q := OfflineTopicMap[topic]
 	OfflineTopicRWmux.RUnlock()
@@ -607,6 +607,31 @@ func getOfflineMsg(topic string) (msgs [][]byte) {
 		msgs = q.GetAll()
 	}
 
+	//去pending队列里找该topic的，append进来
+	// NOTE: 可能还是会有时间差
+	n := 0
+	for _, pmsg := range PendingQueue {
+		if pmsg != nil && pmsg.Topic == topic {
+			msgs = append(msgs, pmsg.Msg.Payload())
+			select {
+			case pmsg.Done <- true:
+				// 直接打断pending状态
+			default:
+				//说明有问题，只有两种情况： 堵死或者nil。
+				Log.Errorc(func() string {
+					return fmt.Sprintf("(%s) send done to pending failed. msg: %v", this.cid(), pmsg)
+				})
+			}
+			n++
+
+		}
+	}
+
+	if n > 0 {
+		Log.Debugc(func() string {
+			return fmt.Sprintf("(%s) append %d pending msg to offline queue msgs.", this.cid(), n)
+		})
+	}
 	return msgs
 }
 
