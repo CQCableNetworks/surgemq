@@ -434,7 +434,7 @@ func (this *service) preDispatchPublish(msg *message.PublishMessage) (err error)
 		go this.checkOnlineStatus(msg)
 	default:
 		Log.Infoc(func() string {
-			return fmt.Sprintf("(%s) receive private message. payload size: %d", this.cid(), len(msg.Payload()))
+			return fmt.Sprintf("(%s) process private message. payload size: %d", this.cid(), len(msg.Payload()))
 		})
 		msg.SetPacketId(getNextPktId())
 		go this.postPublish(msg)
