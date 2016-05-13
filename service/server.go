@@ -145,10 +145,6 @@ func (this *Server) ListenAndServe() error {
 				payload       []byte
 			)
 
-			Log.Infoc(func() string {
-				return "receive group msgs.\n"
-			})
-
 			err = ffjson.Unmarshal(msg.Payload(), &broadcast_msg)
 			if err != nil {
 				Log.Errorc(func() string { return fmt.Sprintf("can't parse message json: %s", msg.Payload()) })
@@ -161,14 +157,20 @@ func (this *Server) ListenAndServe() error {
 				return
 			}
 
+			n := 0
 			for _, client_id := range broadcast_msg.Clients {
 				topic := topics.GetUserTopic(client_id)
 				if topic == "" {
 					continue
 				}
+				n++
 
 				go this.publishToTopic(topic, payload)
 			}
+
+			Log.Infoc(func() string {
+				return fmt.Sprintf("(%s) process group message to %d/%d clients. payload size: %d", this.cid(), n, len(broadcast_msg.Clients), len(payload))
+			})
 
 			return
 		}
@@ -199,6 +201,10 @@ func (this *Server) ListenAndServe() error {
 			for _, topic := range broadcast_msg.Clients {
 				go this.publishToTopic(topic, payload)
 			}
+
+			Log.Infoc(func() string {
+				return fmt.Sprintf("(%s) receive group message. clients: %d, payload size: %d", this.cid(), len(broadcast_msg.Clients), len(payload))
+			})
 
 			return
 		}

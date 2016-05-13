@@ -433,6 +433,9 @@ func (this *service) preDispatchPublish(msg *message.PublishMessage) (err error)
 	case OnlineStatusChannel:
 		go this.checkOnlineStatus(msg)
 	default:
+		Log.Infoc(func() string {
+			return fmt.Sprintf("(%s) receive private message. payload size: %d", this.cid(), len(msg.Payload()))
+		})
 		msg.SetPacketId(getNextPktId())
 		go this.postPublish(msg)
 	}
@@ -607,8 +610,8 @@ func (this *service) getOfflineMsg(topic string) (msgs [][]byte) {
 		msgs = q.GetAll()
 	}
 
-	//去pending队列里找该topic的，append进来
-	// NOTE: 可能还是会有时间差
+	// 去pending队列里找该topic的，append进来，但可能还是会有时间差
+	// FIXME　效率可能太低
 	n := 0
 	for _, pmsg := range PendingQueue {
 		if pmsg != nil && pmsg.Topic == topic {
