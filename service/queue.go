@@ -152,12 +152,12 @@ func (this *OfflineTopicQueue) Clean() {
 			this.Q = nil
 		}
 	case "redis":
-		keys := make([]string, this.Length, this.Length)
+		keys := make([]interface{}, this.Length, this.Length)
 		for i := 0; i < this.Length; i++ {
 			keys[i] = this.RedisKey(i)
 		}
 
-		_, err := topics.RedisDoDel(keys)
+		_, err := topics.RedisDoDel(keys...)
 		if err != nil {
 			Log.Errorc(func() string {
 				return fmt.Sprintf("failed to clean offline msg to redis: %s", err.Error())
