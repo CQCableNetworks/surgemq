@@ -2,7 +2,6 @@ package service
 
 import (
 	"fmt"
-	"github.com/garyburd/redigo/redis"
 	"github.com/nagae-memooff/surgemq/topics"
 	"github.com/surgemq/message"
 	"net"
@@ -153,10 +152,9 @@ func (this *OfflineTopicQueue) Clean() {
 			this.Q = nil
 		}
 	case "redis":
-		//     keys := make([]string, this.Length, this.Length)
-		keys := redis.Args{}
+		keys := make([]string, this.Length, this.Length)
 		for i := 0; i < this.Length; i++ {
-			keys.Add(this.RedisKey(i))
+			keys[i] = this.RedisKey(i)
 		}
 
 		_, err := topics.RedisDoDel(keys)
