@@ -474,7 +474,7 @@ func (this *Server) handleConnection(c io.Closer) (err error) {
 	//this.svcs = append(this.svcs, svc)
 	//this.mu.Unlock()
 
-	Log.Infoc(func() string {
+	Log.Debugc(func() string {
 		return fmt.Sprintf("client %s connected successfully.", c_id)
 	})
 
