@@ -120,6 +120,22 @@ type Server struct {
 
 	subs []interface{}
 	qoss []byte
+
+	arrayPool *sync.Pool
+}
+
+func (this *Server) CreateAndGetBytes(size int64) []byte {
+	b := this.arrayPool.Get().([]byte)
+	if size > int64(len(b)) {
+		//this.arrayPool.Put(b)
+		b = nil
+		return make([]byte, size)
+	}
+	return b
+}
+
+func (this *Server) DestoryBytes(b []byte) {
+	this.arrayPool.Put(b)
 }
 
 // ListenAndServe listents to connections on the URI requested, and handles any
@@ -129,6 +145,12 @@ type Server struct {
 // url.Parse(). For example, an URI could be "tcp://0.0.0.0:1883".
 func (this *Server) ListenAndServe() error {
 	defer atomic.CompareAndSwapInt32(&this.running, 1, 0)
+
+	this.arrayPool = &sync.Pool{
+		New: func() interface{} {
+			return make([]byte, 50)
+		},
+	}
 
 	if !atomic.CompareAndSwapInt32(&this.running, 0, 1) {
 		Log.Error("server/ListenAndServe: Server is already running")
@@ -445,6 +467,7 @@ func (this *Server) handleConnection(c io.Closer) (err error) {
 		conn:      conn,
 		sessMgr:   this.sessMgr,
 		topicsMgr: this.topicsMgr,
+		server:    this,
 	}
 
 	c_id := string(req.ClientId())

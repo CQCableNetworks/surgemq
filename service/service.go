@@ -124,6 +124,7 @@ type service struct {
 	//   subs  []interface{}
 	//   qoss  []byte
 	//   rmsgs []*message.PublishMessage
+	server *Server
 }
 
 func (this *service) start(client_id string) error {
@@ -134,24 +135,24 @@ func (this *service) start(client_id string) error {
 	Log.Debugc(func() string { return fmt.Sprintf("make new buffer for client: %s", client_id) })
 
 	if strings.HasPrefix(client_id, "master") || strings.HasPrefix(client_id, "ewhine") {
-		this.in, err = newBuffer(MasterInBufferSize)
+		this.in, err = newBuffer(MasterInBufferSize, this.server)
 		if err != nil {
 			return err
 		}
 
 		// Create the outgoing ring buffer
-		this.out, err = newBuffer(MasterOutBufferSize)
+		this.out, err = newBuffer(MasterOutBufferSize, this.server)
 		if err != nil {
 			return err
 		}
 	} else {
-		this.in, err = newBuffer(DeviceInBufferSize)
+		this.in, err = newBuffer(DeviceInBufferSize, this.server)
 		if err != nil {
 			return err
 		}
 
 		// Create the outgoing ring buffer
-		this.out, err = newBuffer(DeviceOutBufferSize)
+		this.out, err = newBuffer(DeviceOutBufferSize, this.server)
 		if err != nil {
 			return err
 		}

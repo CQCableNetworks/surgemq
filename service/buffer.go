@@ -74,10 +74,12 @@ type buffer struct {
 	pcond *sync.Cond
 	ccond *sync.Cond
 
+	_server *Server
+
 	b []byte //readfrom中的临时数组，为反复使用不必创建新数组
 }
 
-func newBuffer(size int64) (*buffer, error) {
+func newBuffer(size int64, server *Server) (*buffer, error) {
 	if size < 0 {
 		return nil, bufio.ErrNegativeCount
 	}
@@ -100,6 +102,7 @@ func newBuffer(size int64) (*buffer, error) {
 		mask:       size - 1,
 		pcond:      sync.NewCond(new(sync.Mutex)),
 		ccond:      sync.NewCond(new(sync.Mutex)),
+		_server:    server,
 		b:          make([]byte, 5),
 	}, nil
 }
@@ -127,8 +130,12 @@ func (this *buffer) Close() error {
 
 	this.pcond.L.Lock()
 	for i := int64(0); i < this.size; i++ {
-		this.buf[i] = nil
+		if this.buf[i] != nil {
+			this._server.DestoryBytes(*(this.buf[i]))
+			this.buf[i] = nil
+		}
 	}
+	this._server = nil
 	this.pcond.L.Unlock()
 
 	this.pcond.L.Lock()
@@ -269,7 +276,8 @@ func (this *buffer) ReadFrom(r io.Reader) (int64, error) {
 		start_ := int64(1) + int64(m)
 		total_tmp := remlen_tmp + start_
 
-		write_bytes = make([]byte, total_tmp)
+		//write_bytes = make([]byte, total_tmp)
+		write_bytes = this._server.CreateAndGetBytes(total_tmp)
 		copy(write_bytes[0:m+1], this.b[0:m+1])
 		nlen := int64(0)
 		readblock := int64(1024)
@@ -286,6 +294,8 @@ func (this *buffer) ReadFrom(r io.Reader) (int64, error) {
 
 			//b_ := make([]byte, remlen)
 			n, err = r.Read(b_[0:])
+
+			b_ = nil
 
 			if err != nil {
 				return total, err
@@ -318,11 +328,14 @@ func (this *buffer) WriteTo(w io.Writer) (int64, error) {
 		}
 		// There's some data, let's process it first
 		if len(*p) > 0 {
-			n, err := w.Write(*p)
+			_p := this.getRealBytes(p)
+			n, err := w.Write(_p)
 			total += int64(n)
 			//Log.Debugc(func() string{ return fmt.Sprintf("Wrote %d bytes, totaling %d bytes", n, total)})
 			//清理指针p
-			p = nil
+			//p = nil
+			_p = nil
+			this._server.DestoryBytes(*p)
 			if err != nil {
 				return total, err
 			}
@@ -355,39 +368,21 @@ func roundUpPowerOfTwo64(n int64) int64 {
 	return n
 }
 
-/**
-修改 尽量减少数据的创建
-*/
-func (this *buffer) ReadFrom_not_receiver(r io.Reader) (*[]byte, error) {
-
-	total := int64(0)
-
-	if this.isDone() {
-		return nil, io.EOF
-	}
-
-	var write_bytes []byte
-
-	n, err := r.Read(this.b[0:1])
-	if err != nil {
-		return nil, io.EOF
-	}
-	total += int64(n)
+func (this *buffer) getRealBytes(p *[]byte) []byte {
 	max_cnt := 1
 	for {
 		if this.isDone() {
-			return nil, io.EOF
+			return nil
 		}
 		// If we have read 5 bytes and still not done, then there's a problem.
 		if max_cnt > 4 {
-			return nil, fmt.Errorf("sendrecv/peekMessageSize: 4th byte of remaining length has continuation bit set")
+			Log.Debugc(func() string {
+				return fmt.Sprintf("sendrecv/peekMessageSize: 4th byte of remaining length has continuation bit set.")
+			})
+			return nil
 		}
-		_, err := r.Read(this.b[max_cnt:(max_cnt + 1)])
+		copy(this.b[max_cnt:(max_cnt+1)], (*p)[max_cnt:(max_cnt+1)])
 
-		//fmt.Println(b)
-		if err != nil {
-			return nil, err
-		}
 		if this.b[max_cnt] >= 0x80 {
 			max_cnt++
 		} else {
@@ -399,28 +394,6 @@ func (this *buffer) ReadFrom_not_receiver(r io.Reader) (*[]byte, error) {
 	start_ := int64(1) + int64(m)
 	total_tmp := remlen_tmp + start_
 
-	write_bytes = make([]byte, total_tmp)
-	copy(write_bytes[0:m+1], this.b[0:m+1])
-	nlen := int64(0)
-	cnt_ := int64(32)
-	for nlen < remlen_tmp {
-		if this.isDone() {
-			return nil, io.EOF
-		}
-		tmpm := remlen_tmp - nlen
-
-		if tmpm > cnt_ {
-			n, err = r.Read(write_bytes[(start_ + nlen):(start_ + nlen + cnt_)])
-		} else {
-			n, err = r.Read(write_bytes[(start_ + nlen):])
-		}
-
-		if err != nil {
-			return nil, err
-		}
-		nlen += int64(n)
-		total += int64(n)
-	}
-
-	return &write_bytes, nil
+	_p := (*p)[0:total_tmp]
+	return _p
 }

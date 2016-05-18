@@ -144,8 +144,9 @@ func (this *service) writeMessage(msg message.Message) (int, error) {
 	// FIXME: Try to find a better way than a mutex...if possible.
 	this.wmu.Lock()
 	defer this.wmu.Unlock()
-	buf = make([]byte, l)
-	n, err = msg.Encode(buf[0:])
+	//buf = make([]byte, l)
+	buf = this.server.CreateAndGetBytes(int64(l))
+	n, err = msg.Encode(buf[0:l])
 	if err != nil {
 		return 0, err
 	}
