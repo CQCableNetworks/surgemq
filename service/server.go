@@ -28,6 +28,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"encoding/binary"
 	"github.com/nagae-memooff/config"
 	log "github.com/nagae-memooff/log4go"
 	"github.com/nagae-memooff/surgemq/auth"
@@ -136,6 +137,34 @@ func (this *Server) CreateAndGetBytes(size int64) []byte {
 
 func (this *Server) DestoryBytes(b []byte) {
 	this.arrayPool.Put(b)
+}
+
+func (this *Server) getRealBytes(p *[]byte) []byte {
+	max_cnt := 1
+	b := this.CreateAndGetBytes(int64(5))
+	for {
+		// If we have read 5 bytes and still not done, then there's a problem.
+		if max_cnt > 4 {
+			Log.Debugc(func() string {
+				return fmt.Sprintf("Server/getRealBytes: 4th byte of remaining length has continuation bit set.")
+			})
+			return nil
+		}
+		copy(b[max_cnt:(max_cnt+1)], (*p)[max_cnt:(max_cnt+1)])
+
+		if b[max_cnt] >= 0x80 {
+			max_cnt++
+		} else {
+			break
+		}
+	}
+	remlen, m := binary.Uvarint(b[1 : max_cnt+1])
+	remlen_tmp := int64(remlen)
+	start_ := int64(1) + int64(m)
+	total_tmp := remlen_tmp + start_
+	this.DestoryBytes(b)
+	_p := (*p)[0:total_tmp]
+	return _p
 }
 
 // ListenAndServe listents to connections on the URI requested, and handles any

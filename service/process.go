@@ -28,7 +28,6 @@ import (
 	"time"
 
 	//   "runtime/debug"
-	"encoding/binary"
 	"github.com/nagae-memooff/surgemq/sessions"
 	"github.com/nagae-memooff/surgemq/topics"
 	"github.com/surgemq/message"
@@ -97,7 +96,7 @@ func (this *service) processor() {
 		}
 		mtype := message.MessageType((*p)[0] >> 4)
 
-		_p := this.getRealBytes(p)
+		_p := this.server.getRealBytes(p)
 
 		msg, err := mtype.New()
 		n, err := msg.Decode(_p)
@@ -135,36 +134,6 @@ func (this *service) processor() {
 		}
 
 	}
-}
-
-func (this *service) getRealBytes(p *[]byte) []byte {
-	max_cnt := 1
-	for {
-		if this.isDone() {
-			return nil
-		}
-		// If we have read 5 bytes and still not done, then there's a problem.
-		if max_cnt > 4 {
-			Log.Debugc(func() string {
-				return fmt.Sprintf("(%s) sendrecv/peekMessageSize: 4th byte of remaining length has continuation bit set.", this.cid())
-			})
-			return nil
-		}
-		copy(this.out.b[max_cnt:(max_cnt+1)], (*p)[max_cnt:(max_cnt+1)])
-
-		if this.out.b[max_cnt] >= 0x80 {
-			max_cnt++
-		} else {
-			break
-		}
-	}
-	remlen, m := binary.Uvarint(this.out.b[1 : max_cnt+1])
-	remlen_tmp := int64(remlen)
-	start_ := int64(1) + int64(m)
-	total_tmp := remlen_tmp + start_
-
-	_p := (*p)[0:total_tmp]
-	return _p
 }
 
 func (this *service) processIncoming(msg message.Message) error {

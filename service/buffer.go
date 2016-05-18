@@ -328,7 +328,7 @@ func (this *buffer) WriteTo(w io.Writer) (int64, error) {
 		}
 		// There's some data, let's process it first
 		if len(*p) > 0 {
-			_p := this.getRealBytes(p)
+			_p := this._server.getRealBytes(p)
 			n, err := w.Write(_p)
 			total += int64(n)
 			//Log.Debugc(func() string{ return fmt.Sprintf("Wrote %d bytes, totaling %d bytes", n, total)})
@@ -366,34 +366,4 @@ func roundUpPowerOfTwo64(n int64) int64 {
 	n++
 
 	return n
-}
-
-func (this *buffer) getRealBytes(p *[]byte) []byte {
-	max_cnt := 1
-	for {
-		if this.isDone() {
-			return nil
-		}
-		// If we have read 5 bytes and still not done, then there's a problem.
-		if max_cnt > 4 {
-			Log.Debugc(func() string {
-				return fmt.Sprintf("sendrecv/peekMessageSize: 4th byte of remaining length has continuation bit set.")
-			})
-			return nil
-		}
-		copy(this.b[max_cnt:(max_cnt+1)], (*p)[max_cnt:(max_cnt+1)])
-
-		if this.b[max_cnt] >= 0x80 {
-			max_cnt++
-		} else {
-			break
-		}
-	}
-	remlen, m := binary.Uvarint(this.b[1 : max_cnt+1])
-	remlen_tmp := int64(remlen)
-	start_ := int64(1) + int64(m)
-	total_tmp := remlen_tmp + start_
-
-	_p := (*p)[0:total_tmp]
-	return _p
 }
