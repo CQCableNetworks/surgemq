@@ -154,7 +154,6 @@ func (this *service) processIncoming(msg message.Message) error {
 		//     Log.Errorc(func() string{ return fmt.Sprintf("this.subs is: %v,  count is %d, msg_type is %T", this.subs, len(this.subs), msg)})
 		// For PUBACK message, it means QoS 1, we should send to ack queue
 		//     Log.Errorc(func() string{ return fmt.Sprintf("\n%T:%d==========\nmsg is %v\n=====================", *msg, msg.PacketId(), *msg)})
-		//FIXME: ack伪造攻击
 		go this.processAck(msg.PacketId())
 		this.sess.Pub1ack.Ack(msg)
 		this.processAcked(this.sess.Pub1ack)
@@ -487,7 +486,6 @@ func (this *service) onReceiveBadge(msg *message.PublishMessage) (err error) {
 
 //根据指定ID查询客户端在线状态，并推送消息
 func (this *service) checkOnlineStatus(msg *message.PublishMessage) {
-	//TODO 优化
 	client_id := string(msg.Payload())
 	online, lasttime, _ := GetOnlineStatus(client_id)
 
@@ -615,7 +613,6 @@ func (this *service) getOfflineMsg(topic string) (msgs [][]byte) {
 	}
 
 	// 去pending队列里找该topic的，append进来，但可能还是会有时间差
-	// FIXME　效率可能太低
 	n := 0
 	for _, pmsg := range PendingQueue {
 		if pmsg != nil && pmsg.Topic == topic {
@@ -758,7 +755,6 @@ func _get_tmp_msg() (msg *message.PublishMessage) {
 		}
 	*/
 
-	//FIXME!!
 	for {
 		msg = MessagePool.Get().(*message.PublishMessage)
 		if msg != nil {

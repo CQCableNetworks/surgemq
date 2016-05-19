@@ -47,7 +47,6 @@ func NewMXProvider() *mxTopics {
 }
 
 func (this *mxTopics) Subscribe(topic []byte, qos byte, sub interface{}, client_id string) (byte, error) {
-	topic_str := string(topic)
 	if !message.ValidQos(qos) {
 		return message.QosFailure, fmt.Errorf("Invalid QoS %d", qos)
 	}
@@ -56,6 +55,7 @@ func (this *mxTopics) Subscribe(topic []byte, qos byte, sub interface{}, client_
 		return message.QosFailure, fmt.Errorf("Subscriber cannot be nil")
 	}
 
+	topic_str := string(topic)
 	if !checkValidchannel(client_id, topic_str) {
 		return message.QosFailure, fmt.Errorf("%s: Invalid Channel %s", client_id, topic_str)
 	}

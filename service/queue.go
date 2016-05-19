@@ -14,8 +14,8 @@ var (
 	//   PendingProcessor = make(chan *message.PublishMessage, 65536)
 
 	OfflineTopicMap            = make(map[string]*OfflineTopicQueue)
-	OfflineTopicQueueProcessor = make(chan *message.PublishMessage, 2048)
-	OfflineTopicCleanProcessor = make(chan string, 2048)
+	OfflineTopicQueueProcessor = make(chan *message.PublishMessage, 8192)
+	OfflineTopicCleanProcessor = make(chan string, 128)
 	OfflineTopicPayloadUseGzip bool
 
 	ClientMap          = make(map[string]*net.Conn)
