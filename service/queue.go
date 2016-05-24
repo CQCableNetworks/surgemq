@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"github.com/nagae-memooff/config"
 	"github.com/nagae-memooff/surgemq/topics"
 	"github.com/surgemq/message"
 	"net"
@@ -292,13 +293,14 @@ func init() {
 	}
 
 	go func() {
+		sleep_time := time.Duration(config.GetInt("publish_timeout_second") + 10)
 		for {
 			select {
 			case msg := <-OldMessagesQueue:
 				MessagePool.Put(msg)
 				//
 			default:
-				time.Sleep(5 * time.Second)
+				time.Sleep(sleep_time)
 
 			}
 
