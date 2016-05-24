@@ -1,7 +1,9 @@
 package service
 
 import (
+	"encoding/binary"
 	"fmt"
+	"github.com/boltdb/bolt"
 	"github.com/nagae-memooff/surgemq/topics"
 	"github.com/surgemq/message"
 	"net"
@@ -28,6 +30,8 @@ var (
 	Max_message_queue int
 	MessageQueueStore string
 	temp_bytes        *sync.Pool
+
+	BoltDB *bolt.DB
 )
 
 type PendingStatus struct {
@@ -51,36 +55,45 @@ type ClientHash struct {
 
 // 定义一个离线消息队列的结构体，保存一个二维byte数组和一个位置
 type OfflineTopicQueue struct {
-	Topic   string
-	Q       [][]byte
-	Pos     int
-	Length  int
-	Cleaned bool
-	Gziped  bool
-	lock    sync.RWMutex
+	Topic      string
+	Q          [][]byte
+	Pos        int
+	Length     int
+	Cleaned    bool
+	Gziped     bool
+	TopicBytes []byte
+	lock       sync.RWMutex
 }
 
 func NewOfflineTopicQueue(length int, topic string) (mq *OfflineTopicQueue) {
 	var (
-		q [][]byte
-		t string
+		q  [][]byte
+		t  string
+		tb []byte
 	)
 	switch MessageQueueStore {
-	case "redis":
-		t = topic
-		q = nil
 	case "local":
 		t = ""
 		q = make([][]byte, length, length)
+		tb = nil
+	case "redis":
+		t = topic
+		q = nil
+		tb = nil
+	case "bolt":
+		t = topic
+		q = nil
+		tb = []byte(topic)
 	}
 
 	mq = &OfflineTopicQueue{
-		Topic:   t,
-		Q:       q,
-		Pos:     0,
-		Length:  length,
-		Cleaned: true,
-		Gziped:  OfflineTopicPayloadUseGzip,
+		Topic:      t,
+		Q:          q,
+		Pos:        0,
+		Length:     length,
+		Cleaned:    true,
+		TopicBytes: tb,
+		Gziped:     OfflineTopicPayloadUseGzip,
 	}
 
 	return mq
@@ -90,7 +103,7 @@ func NewOfflineTopicQueue(length int, topic string) (mq *OfflineTopicQueue) {
 func (this *OfflineTopicQueue) Add(msg_bytes []byte) {
 	this.lock.Lock()
 	defer this.lock.Unlock()
-	if this.Q == nil && MessageQueueStore != "redis" {
+	if this.Q == nil && MessageQueueStore == "local" {
 		this.Q = make([][]byte, this.Length, this.Length)
 	}
 
@@ -112,6 +125,14 @@ func (this *OfflineTopicQueue) Add(msg_bytes []byte) {
 					return fmt.Sprintf("failed to save offline msg to redis: %s", err.Error())
 				})
 			}
+		case "bolt":
+			BoltDB.Update(func(tx *bolt.Tx) error {
+				b, err := tx.CreateBucketIfNotExists(this.TopicBytes)
+				if err != nil {
+					return err
+				}
+				return b.Put(this.PosToB(), mb)
+			})
 		}
 	} else {
 		switch MessageQueueStore {
@@ -124,6 +145,14 @@ func (this *OfflineTopicQueue) Add(msg_bytes []byte) {
 					return fmt.Sprintf("failed to save offline msg to redis: %s", err.Error())
 				})
 			}
+		case "bolt":
+			BoltDB.Update(func(tx *bolt.Tx) error {
+				b, err := tx.CreateBucketIfNotExists(this.TopicBytes)
+				if err != nil {
+					return err
+				}
+				return b.Put(this.PosToB(), msg_bytes)
+			})
 		}
 	}
 
@@ -163,6 +192,12 @@ func (this *OfflineTopicQueue) Clean() {
 				return fmt.Sprintf("failed to clean offline msg to redis: %s", err.Error())
 			})
 		}
+	case "bolt":
+		BoltDB.Update(func(tx *bolt.Tx) error {
+			err := tx.DeleteBucket(this.TopicBytes)
+
+			return err
+		})
 	}
 
 	this.Pos = 0
@@ -200,6 +235,26 @@ func (this *OfflineTopicQueue) GetAll() (msg_bytes [][]byte) {
 			if err != nil {
 				Log.Errorc(func() string { return err.Error() })
 			}
+		case "bolt":
+			BoltDB.View(func(tx *bolt.Tx) error {
+				//TODO
+				b := tx.Bucket(this.TopicBytes)
+
+				var keys [][]byte
+				for i := this.Pos; i < this.Length; i++ {
+					keys = append(keys, PosToB(i))
+				}
+				for i := 0; i < this.Pos; i++ {
+					keys = append(keys, PosToB(i))
+				}
+
+				for _, key := range keys {
+					msg_bytes = append(msg_bytes, b.Get(key))
+				}
+
+				return nil
+			})
+
 		}
 
 		// 判断是否gzip存储，如果是，则解压后再取出
@@ -221,6 +276,12 @@ func (this *OfflineTopicQueue) GetAll() (msg_bytes [][]byte) {
 
 func (this *OfflineTopicQueue) RedisKey(pos int) (key string) {
 	return fmt.Sprintf("/t/%s:%d", this.Topic, pos)
+}
+
+func (this *OfflineTopicQueue) PosToB() []byte {
+	b := make([]byte, 8)
+	binary.BigEndian.PutUint64(b, uint64(this.Pos))
+	return b
 }
 
 //如果是redis内的，则不支持转换
@@ -322,8 +383,9 @@ func init() {
 			case msg := <-OfflineTopicQueueProcessor:
 				//         _ = msg
 				//         topic := string(msg.Topic())
-				go func(topic string, payload []byte) {
+				go func(topic_bytes, payload []byte) {
 					//         func(topic string, payload []byte) {
+					topic := string(topic_bytes)
 					OfflineTopicRWmux.RLock()
 					q := OfflineTopicMap[topic]
 					OfflineTopicRWmux.RUnlock()
@@ -342,7 +404,7 @@ func init() {
 
 					q.Add(payload)
 					_return_tmp_msg(msg)
-				}(string(msg.Topic()), msg.Payload())
+				}(msg.Topic(), msg.Payload())
 
 			case client := <-ClientMapProcessor:
 				client_id := client.Name
@@ -361,4 +423,10 @@ func init() {
 			}
 		}
 	}()
+}
+
+func PosToB(i int) []byte {
+	b := make([]byte, 8)
+	binary.BigEndian.PutUint64(b, uint64(i))
+	return b
 }
