@@ -353,7 +353,7 @@ func init() {
 	}
 
 	go func() {
-		sleep_time := time.Duration(config.GetInt("publish_timeout_second") + 10)
+		sleep_time := time.Duration(config.GetInt("publish_timeout_second")+10) * time.Second
 		for {
 			select {
 			case msg := <-OldMessagesQueue:
