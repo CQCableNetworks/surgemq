@@ -614,19 +614,21 @@ func (this *service) getOfflineMsg(topic string) (msgs [][]byte) {
 
 	// 去pending队列里找该topic的，append进来，但可能还是会有时间差
 	n := 0
-	for _, pmsg := range PendingQueue {
-		if pmsg != nil && pmsg.Topic == topic {
+	for i, pmsg := range PendingQueue {
+		if pmsg != nil && pmsg.Topic == topic && pmsg.Done == nil {
 			msgs = append(msgs, pmsg.Msg.Payload())
+
 			select {
 			case pmsg.Done <- true:
+				n++
 				// 直接打断pending状态
 			default:
 				//说明有问题，只有两种情况： 堵死或者nil。
+				PendingQueue[i] = nil
 				Log.Errorc(func() string {
 					return fmt.Sprintf("(%s) send done to pending failed. msg: %v", this.cid(), pmsg)
 				})
 			}
-			n++
 
 		}
 	}
@@ -674,12 +676,9 @@ func (this *service) processAck(pkt_id uint16) {
 	default:
 		//说明有问题，只有两种情况： 堵死或者nil。
 		Log.Errorc(func() string {
-			return fmt.Sprintf("(%s) receive ack, but this pkt_id %d in queue is %v. ", this.cid(), pkt_id, pending_status)
+			return fmt.Sprintf("(%s) receive ack, but this value of this pkt_id %d in queue is %v. ", this.cid(), pkt_id, pending_status)
 		})
 	}
-	//   _return_tmp_msg(pending_msg.Msg)
-
-	//   PendingQueue[pkt_id] = nil
 }
 
 // 判断消息是否已读
