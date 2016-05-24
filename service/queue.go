@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"github.com/boltdb/bolt"
+	"github.com/nagae-memooff/config"
 	"github.com/nagae-memooff/surgemq/topics"
 	"github.com/surgemq/message"
 	"net"
@@ -237,7 +238,6 @@ func (this *OfflineTopicQueue) GetAll() (msg_bytes [][]byte) {
 			}
 		case "bolt":
 			BoltDB.View(func(tx *bolt.Tx) error {
-				//TODO
 				b := tx.Bucket(this.TopicBytes)
 
 				var keys [][]byte
@@ -353,13 +353,14 @@ func init() {
 	}
 
 	go func() {
+		sleep_time := time.Duration(config.GetInt("publish_timeout_second") + 10)
 		for {
 			select {
 			case msg := <-OldMessagesQueue:
 				MessagePool.Put(msg)
 				//
 			default:
-				time.Sleep(5 * time.Second)
+				time.Sleep(sleep_time)
 
 			}
 
@@ -429,4 +430,8 @@ func PosToB(i int) []byte {
 	b := make([]byte, 8)
 	binary.BigEndian.PutUint64(b, uint64(i))
 	return b
+}
+
+func BToPOS(b []byte) int {
+	return int(binary.BigEndian.Uint64(b))
 }
