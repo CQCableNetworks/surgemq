@@ -28,7 +28,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"encoding/binary"
+	//"encoding/binary"
 	"github.com/nagae-memooff/config"
 	log "github.com/nagae-memooff/log4go"
 	"github.com/nagae-memooff/surgemq/auth"
@@ -126,21 +126,22 @@ type Server struct {
 }
 
 func (this *Server) CreateAndGetBytes(size int64) []byte {
-	b := this.arrayPool.Get().([]byte)
+	/*b := this.arrayPool.Get().([]byte)
 	if size > int64(len(b)) {
-		//this.arrayPool.Put(b)
 		b = nil
 		return make([]byte, size)
 	}
-	return b
+	return b*/
+	return make([]byte, size)
 }
 
 func (this *Server) DestoryBytes(b []byte) {
-	this.arrayPool.Put(b)
+	/*this.arrayPool.Put(b)*/
+	b = nil
 }
 
 func (this *Server) getRealBytes(p *[]byte) []byte {
-	max_cnt := 1
+	/*max_cnt := 1
 	b := this.CreateAndGetBytes(int64(5))
 	for {
 		// If we have read 5 bytes and still not done, then there's a problem.
@@ -150,7 +151,7 @@ func (this *Server) getRealBytes(p *[]byte) []byte {
 			})
 			return nil
 		}
-		copy(b[max_cnt:(max_cnt+1)], (*p)[max_cnt:(max_cnt+1)])
+		copy(b[max_cnt:(max_cnt + 1)], (*p)[max_cnt:(max_cnt + 1)])
 
 		if b[max_cnt] >= 0x80 {
 			max_cnt++
@@ -158,13 +159,14 @@ func (this *Server) getRealBytes(p *[]byte) []byte {
 			break
 		}
 	}
-	remlen, m := binary.Uvarint(b[1 : max_cnt+1])
+	remlen, m := binary.Uvarint(b[1 : max_cnt + 1])
 	remlen_tmp := int64(remlen)
 	start_ := int64(1) + int64(m)
 	total_tmp := remlen_tmp + start_
 	this.DestoryBytes(b)
 	_p := (*p)[0:total_tmp]
-	return _p
+	return _p*/
+	return *p
 }
 
 // ListenAndServe listents to connections on the URI requested, and handles any
@@ -198,13 +200,17 @@ func (this *Server) ListenAndServe() error {
 
 			err = ffjson.Unmarshal(msg.Payload(), &broadcast_msg)
 			if err != nil {
-				Log.Errorc(func() string { return fmt.Sprintf("can't parse message json: %s", msg.Payload()) })
+				Log.Errorc(func() string {
+					return fmt.Sprintf("can't parse message json: %s", msg.Payload())
+				})
 				return
 			}
 
 			payload, err = base64.StdEncoding.DecodeString(broadcast_msg.Payload)
 			if err != nil {
-				Log.Errorc(func() string { return fmt.Sprintf("can't decode payload: %s", broadcast_msg.Payload) })
+				Log.Errorc(func() string {
+					return fmt.Sprintf("can't decode payload: %s", broadcast_msg.Payload)
+				})
 				return
 			}
 
@@ -239,13 +245,17 @@ func (this *Server) ListenAndServe() error {
 
 			err = ffjson.Unmarshal(msg.Payload(), &broadcast_msg)
 			if err != nil {
-				Log.Errorc(func() string { return fmt.Sprintf("can't parse message json: %s", msg.Payload()) })
+				Log.Errorc(func() string {
+					return fmt.Sprintf("can't parse message json: %s", msg.Payload())
+				})
 				return
 			}
 
 			payload, err = base64.StdEncoding.DecodeString(broadcast_msg.Payload)
 			if err != nil {
-				Log.Errorc(func() string { return fmt.Sprintf("can't decode payload: %s", broadcast_msg.Payload) })
+				Log.Errorc(func() string {
+					return fmt.Sprintf("can't decode payload: %s", broadcast_msg.Payload)
+				})
 				return
 			}
 
@@ -402,7 +412,9 @@ func (this *Server) Close() error {
 	this.ssl_ln.Close()
 
 	for _, svc := range this.svcs {
-		Log.Infoc(func() string { return fmt.Sprintf("Stopping service %d", svc.id) })
+		Log.Infoc(func() string {
+			return fmt.Sprintf("Stopping service %d", svc.id)
+		})
 		svc.stop()
 	}
 
