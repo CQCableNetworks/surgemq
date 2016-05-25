@@ -7,6 +7,7 @@ import (
 	"github.com/nagae-memooff/config"
 	"github.com/nagae-memooff/surgemq/topics"
 	"github.com/surgemq/message"
+	"github.com/syndtr/goleveldb/leveldb"
 	"net"
 	"sync"
 	"time"
@@ -32,7 +33,8 @@ var (
 	MessageQueueStore string
 	temp_bytes        *sync.Pool
 
-	BoltDB *bolt.DB
+	BoltDB  *bolt.DB
+	LevelDB *leveldb.DB
 )
 
 type PendingStatus struct {
@@ -85,6 +87,10 @@ func NewOfflineTopicQueue(length int, topic string) (mq *OfflineTopicQueue) {
 		t = topic
 		q = nil
 		tb = []byte(topic)
+	case "leveldb":
+		t = topic
+		q = nil
+		tb = nil
 	}
 
 	mq = &OfflineTopicQueue{
@@ -134,6 +140,11 @@ func (this *OfflineTopicQueue) Add(msg_bytes []byte) {
 				}
 				return b.Put(this.PosToB(), mb)
 			})
+		case "leveldb":
+			err := LevelDB.Put(this.LevelDBKey(this.Pos), mb, nil)
+			if err != nil {
+				Log.Error("leveldb: %s", err.Error())
+			}
 		}
 	} else {
 		switch MessageQueueStore {
@@ -154,6 +165,11 @@ func (this *OfflineTopicQueue) Add(msg_bytes []byte) {
 				}
 				return b.Put(this.PosToB(), msg_bytes)
 			})
+		case "leveldb":
+			err := LevelDB.Put(this.LevelDBKey(this.Pos), msg_bytes, nil)
+			if err != nil {
+				Log.Error("leveldb: %s", err.Error())
+			}
 		}
 	}
 
@@ -199,6 +215,21 @@ func (this *OfflineTopicQueue) Clean() {
 
 			return err
 		})
+	case "leveldb":
+		keys := make([][]byte, this.Length, this.Length)
+		for i := 0; i < this.Length; i++ {
+			keys[i] = this.LevelDBKey(i)
+		}
+
+		var err error
+		for _, key := range keys {
+			err = LevelDB.Delete(key, nil)
+			if err != nil {
+				Log.Errorc(func() string {
+					return fmt.Sprintf("failed to clean offline msg from leveldb: %s", err.Error())
+				})
+			}
+		}
 	}
 
 	this.Pos = 0
@@ -255,6 +286,28 @@ func (this *OfflineTopicQueue) GetAll() (msg_bytes [][]byte) {
 				return nil
 			})
 
+		case "leveldb":
+			var keys [][]byte
+			for i := this.Pos; i < this.Length; i++ {
+				keys = append(keys, this.LevelDBKey(i))
+			}
+			for i := 0; i < this.Pos; i++ {
+				keys = append(keys, this.LevelDBKey(i))
+			}
+
+			for _, key := range keys {
+				data, err := LevelDB.Get(key, nil)
+				if err != nil {
+					Log.Errorc(func() string {
+						return fmt.Sprintf("failed to get offline msg from leveldb: %s", err.Error())
+					})
+					continue
+				}
+				// Log.Debug("key is %s, value is %s", key, data)
+
+				msg_bytes = append(msg_bytes, data)
+			}
+
 		}
 
 		// 判断是否gzip存储，如果是，则解压后再取出
@@ -276,6 +329,10 @@ func (this *OfflineTopicQueue) GetAll() (msg_bytes [][]byte) {
 
 func (this *OfflineTopicQueue) RedisKey(pos int) (key string) {
 	return fmt.Sprintf("/t/%s:%d", this.Topic, pos)
+}
+
+func (this *OfflineTopicQueue) LevelDBKey(pos int) (key []byte) {
+	return []byte(fmt.Sprintf("/t/%s:%d", this.Topic, pos))
 }
 
 func (this *OfflineTopicQueue) PosToB() []byte {
