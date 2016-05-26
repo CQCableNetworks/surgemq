@@ -43,6 +43,7 @@ var (
 	p                   *sync.Pool
 	MessagePool         *sync.Pool
 	OnGroupPublish      func(msg *message.PublishMessage, this *service) (err error)
+	processAck          func(pkt_id uint16, this *service)
 	OnlineStatusChannel = "/fdf406fadef0ba24f3bfe8bc00b7bb350901417f"
 )
 
@@ -154,7 +155,7 @@ func (this *service) processIncoming(msg message.Message) error {
 		//     Log.Errorc(func() string{ return fmt.Sprintf("this.subs is: %v,  count is %d, msg_type is %T", this.subs, len(this.subs), msg)})
 		// For PUBACK message, it means QoS 1, we should send to ack queue
 		//     Log.Errorc(func() string{ return fmt.Sprintf("\n%T:%d==========\nmsg is %v\n=====================", *msg, msg.PacketId(), *msg)})
-		go this.processAck(msg.PacketId())
+		go processAck(msg.PacketId(), this)
 		this.sess.Pub1ack.Ack(msg)
 		this.processAcked(this.sess.Pub1ack)
 
@@ -639,46 +640,6 @@ func (this *service) getOfflineMsg(topic string) (msgs [][]byte) {
 		})
 	}
 	return msgs
-}
-
-//根据pkt_id，将pending队列里的该条消息移除
-func (this *service) processAck(pkt_id uint16) {
-	//   msg := PendingQueue[pkt_id]
-	//   if msg != nil {
-	//     msg.SetPayload(nil)
-	//   }
-	pending_status := PendingQueue[pkt_id]
-	if pending_status == nil {
-		// NOTE ios 旧版，mosquitto的bug会导致回ack包的时候，早已超时了
-		// 此外网络特别慢也有可能
-		// 导致收到ack的时候，按照对应的pkt_id，找不到东西
-		Log.Errorc(func() string {
-			return fmt.Sprintf("(%s) receive ack, but this pkt_id %d in queue is nil! ", this.cid(), pkt_id)
-		})
-
-		return
-	}
-
-	topic := topics.GetUserTopic(this.sess.ID())
-	if pending_status.Topic != topic {
-		// ack包的topic,与登记的不一致
-		Log.Errorc(func() string {
-			return fmt.Sprintf("(%s) receive ack, but the topic %s and %s is mismatch. ", this.cid(), pending_status.Topic, topic)
-		})
-		return
-	}
-
-	select {
-	case pending_status.Done <- true:
-		Log.Debugc(func() string {
-			return fmt.Sprintf("(%s) receive ack, remove msg from pending queue: %d", this.cid(), pkt_id)
-		})
-	default:
-		//说明有问题，只有两种情况： 堵死或者nil。
-		Log.Errorc(func() string {
-			return fmt.Sprintf("(%s) receive ack, but this value of this pkt_id %d in queue is %v. ", this.cid(), pkt_id, pending_status)
-		})
-	}
 }
 
 // 判断消息是否已读

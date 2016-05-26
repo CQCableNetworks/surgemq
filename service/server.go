@@ -231,6 +231,46 @@ func (this *Server) ListenAndServe() error {
 
 			return
 		}
+
+		//根据pkt_id，将pending队列里的该条消息移除
+		processAck = func(pkt_id uint16, this *service) {
+			//   msg := PendingQueue[pkt_id]
+			//   if msg != nil {
+			//     msg.SetPayload(nil)
+			//   }
+			pending_status := PendingQueue[pkt_id]
+			if pending_status == nil {
+				// NOTE ios 旧版，mosquitto的bug会导致回ack包的时候，早已超时了
+				// 此外网络特别慢也有可能
+				// 导致收到ack的时候，按照对应的pkt_id，找不到东西
+				Log.Errorc(func() string {
+					return fmt.Sprintf("(%s) receive ack, but this pkt_id %d in queue is nil! ", this.cid(), pkt_id)
+				})
+
+				return
+			}
+
+			topic := topics.GetUserTopic(this.sess.ID())
+			if pending_status.Topic != topic {
+				// ack包的topic,与登记的不一致
+				Log.Errorc(func() string {
+					return fmt.Sprintf("(%s) receive ack, but the topic %s and %s is mismatch. ", this.cid(), pending_status.Topic, topic)
+				})
+				return
+			}
+
+			select {
+			case pending_status.Done <- true:
+				Log.Debugc(func() string {
+					return fmt.Sprintf("(%s) receive ack, remove msg from pending queue: %d", this.cid(), pkt_id)
+				})
+			default:
+				//说明有问题，只有两种情况： 堵死或者nil。
+				Log.Errorc(func() string {
+					return fmt.Sprintf("(%s) receive ack, but this value of this pkt_id %d in queue is %v. ", this.cid(), pkt_id, pending_status)
+				})
+			}
+		}
 	} else if this.TopicsProvider == "mt" {
 
 		OnGroupPublish = func(msg *message.PublishMessage, this *service) (err error) {
@@ -268,6 +308,38 @@ func (this *Server) ListenAndServe() error {
 			})
 
 			return
+		}
+
+		processAck = func(pkt_id uint16, this *service) {
+			//   msg := PendingQueue[pkt_id]
+			//   if msg != nil {
+			//     msg.SetPayload(nil)
+			//   }
+			pending_status := PendingQueue[pkt_id]
+			if pending_status == nil {
+				// NOTE ios 旧版，mosquitto的bug会导致回ack包的时候，早已超时了
+				// 此外网络特别慢也有可能
+				// 导致收到ack的时候，按照对应的pkt_id，找不到东西
+				Log.Errorc(func() string {
+					return fmt.Sprintf("(%s) receive ack, but this pkt_id %d in queue is nil! ", this.cid(), pkt_id)
+				})
+
+				return
+			}
+
+			//NOTE: 敏推不校验ack包
+
+			select {
+			case pending_status.Done <- true:
+				Log.Debugc(func() string {
+					return fmt.Sprintf("(%s) receive ack, remove msg from pending queue: %d", this.cid(), pkt_id)
+				})
+			default:
+				//说明有问题，只有两种情况： 堵死或者nil。
+				Log.Errorc(func() string {
+					return fmt.Sprintf("(%s) receive ack, but this value of this pkt_id %d in queue is %v. ", this.cid(), pkt_id, pending_status)
+				})
+			}
 		}
 	}
 
