@@ -251,7 +251,7 @@ func (this *Server) ListenAndServe() error {
 			}
 
 			topic := topics.GetUserTopic(this.sess.ID())
-			if pending_status.Topic != topic {
+			if pending_status.Topic != topic && pending_status.Topic != OnlineStatusChannel {
 				// ack包的topic,与登记的不一致
 				Log.Errorc(func() string {
 					return fmt.Sprintf("(%s) receive ack, but the topic %s and %s is mismatch. ", this.cid(), pending_status.Topic, topic)
