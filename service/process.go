@@ -42,8 +42,8 @@ var (
 	ApnPushChannel      string
 	p                   *sync.Pool
 	MessagePool         *sync.Pool
-	OnGroupPublish      func (msg *message.PublishMessage, this *service) (err error)
-	processAck          func (pkt_id uint16, this *service)
+	OnGroupPublish      func(msg *message.PublishMessage, this *service) (err error)
+	processAck          func(pkt_id uint16, this *service)
 	OnlineStatusChannel = "/fdf406fadef0ba24f3bfe8bc00b7bb350901417f"
 )
 
@@ -641,7 +641,6 @@ func (this *service) getOfflineMsg(topic string) (msgs [][]byte) {
 	}
 	return msgs
 }
-
 
 // 判断消息是否已读
 func (this *service) handlePendingMessage(msg *message.PublishMessage, pending_status *PendingStatus) {
