@@ -298,9 +298,6 @@ func (this *OfflineTopicQueue) GetAll() (msg_bytes [][]byte) {
 			for _, key := range keys {
 				data, err := LevelDB.Get(key, nil)
 				if err != nil {
-					Log.Errorc(func() string {
-						return fmt.Sprintf("failed to get offline msg from leveldb: %s", err.Error())
-					})
 					continue
 				}
 				// Log.Debug("key is %s, value is %s", key, data)
@@ -382,26 +379,6 @@ func (this *OfflineTopicQueue) ConvertToUnzip() (err error) {
 }
 
 func init() {
-	/*
-		for i := 0; i < 1024; i++ {
-			sub_p := make([]interface{}, 1, 1)
-			select {
-			case SubscribersSliceQueue <- sub_p:
-			default:
-				sub_p = nil
-				return
-			}
-		}
-	*/
-
-	/*
-		for i := 0; i < 15000; i++ {
-			tmp_msg := message.NewPublishMessage()
-			tmp_msg.SetQoS(message.QosAtLeastOnce)
-
-			NewMessagesQueue <- tmp_msg
-		}
-	*/
 
 	temp_bytes = &sync.Pool{
 		New: func() interface{} {
