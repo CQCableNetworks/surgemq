@@ -57,12 +57,11 @@ type OfflineTopicQueue struct {
 	Topic   string
 	Q       [][]byte
 	Pos     int
-	Length  int
 	Cleaned bool
 	lock    sync.RWMutex
 }
 
-func NewOfflineTopicQueue(length int, topic string) (mq *OfflineTopicQueue) {
+func NewOfflineTopicQueue(topic string) (mq *OfflineTopicQueue) {
 	var (
 		q [][]byte
 		t string
@@ -70,7 +69,7 @@ func NewOfflineTopicQueue(length int, topic string) (mq *OfflineTopicQueue) {
 	switch MessageQueueStore {
 	case "local":
 		t = ""
-		q = make([][]byte, length, length)
+		q = make([][]byte, Max_message_queue, Max_message_queue)
 	case "redis":
 		t = topic
 		q = nil
@@ -83,7 +82,6 @@ func NewOfflineTopicQueue(length int, topic string) (mq *OfflineTopicQueue) {
 		Topic:   t,
 		Q:       q,
 		Pos:     0,
-		Length:  length,
 		Cleaned: true,
 	}
 
@@ -95,7 +93,7 @@ func (this *OfflineTopicQueue) Add(msg_bytes []byte) {
 	this.lock.Lock()
 	defer this.lock.Unlock()
 	if this.Q == nil && MessageQueueStore == "local" {
-		this.Q = make([][]byte, this.Length, this.Length)
+		this.Q = make([][]byte, Max_message_queue, Max_message_queue)
 	}
 
 	switch MessageQueueStore {
@@ -117,7 +115,7 @@ func (this *OfflineTopicQueue) Add(msg_bytes []byte) {
 
 	this.Pos++
 
-	if this.Pos >= this.Length {
+	if this.Pos >= Max_message_queue {
 		this.Pos = 0
 	}
 
@@ -130,18 +128,16 @@ func (this *OfflineTopicQueue) Add(msg_bytes []byte) {
 func (this *OfflineTopicQueue) Clean() {
 	this.lock.Lock()
 	defer this.lock.Unlock()
+
 	switch MessageQueueStore {
 	case "local":
-		if this.Length == Max_message_queue {
-			for i, _ := range this.Q {
-				this.Q[i] = nil
-			}
-		} else {
-			this.Q = nil
+		for i, _ := range this.Q {
+			this.Q[i] = nil
 		}
 	case "redis":
-		keys := make([]interface{}, this.Length, this.Length)
-		for i := 0; i < this.Length; i++ {
+		//     keys := make([]interface{}, this.Length, this.Length)
+		keys := temp_bytes.Get().([]interface{})
+		for i := 0; i < Max_message_queue; i++ {
 			keys[i] = this.DBKey(i)
 		}
 
@@ -152,8 +148,9 @@ func (this *OfflineTopicQueue) Clean() {
 			})
 		}
 	case "leveldb":
-		keys := make([][]byte, this.Length, this.Length)
-		for i := 0; i < this.Length; i++ {
+		keys := temp_bytes.Get().([][]byte)
+		//     keys := make([][]byte, this.Length, this.Length)
+		for i := 0; i < Max_message_queue; i++ {
 			keys[i] = []byte(this.DBKey(i))
 		}
 
@@ -170,7 +167,6 @@ func (this *OfflineTopicQueue) Clean() {
 
 	this.Pos = 0
 	this.Cleaned = true
-	this.Length = Max_message_queue
 }
 
 func (this *OfflineTopicQueue) GetAll() (msg_bytes [][]byte) {
@@ -180,18 +176,17 @@ func (this *OfflineTopicQueue) GetAll() (msg_bytes [][]byte) {
 		this.lock.RLock()
 		defer this.lock.RUnlock()
 
-		//     msg_bytes = make([][]byte, this.Length, this.Length)
-		//     msg_bytes = temp_bytes.Get().([][]byte)
-		// FIXME 用池子优化
-		var msg_bytes [][]byte
+		msg_bytes = temp_bytes.Get().([][]byte)
+		//     var msg_bytes [][]byte
 
 		switch MessageQueueStore {
 		case "local":
-			msg_bytes = this.Q[this.Pos:this.Length]
+			msg_bytes = this.Q[this.Pos:Max_message_queue]
 			msg_bytes = append(msg_bytes, this.Q[0:this.Pos]...)
 		case "redis":
-			var keys []interface{}
-			for i := this.Pos; i < this.Length; i++ {
+			//       keys := make([]interface{}, 0, Max_message_queue)
+			keys := temp_bytes.Get().([]interface{})
+			for i := this.Pos; i < Max_message_queue; i++ {
 				keys = append(keys, this.DBKey(i))
 			}
 			for i := 0; i < this.Pos; i++ {
@@ -204,8 +199,9 @@ func (this *OfflineTopicQueue) GetAll() (msg_bytes [][]byte) {
 				Log.Errorc(func() string { return err.Error() })
 			}
 		case "leveldb":
-			var keys [][]byte
-			for i := this.Pos; i < this.Length; i++ {
+			//       var keys [][]byte
+			keys := temp_bytes.Get().([][]byte)
+			for i := this.Pos; i < Max_message_queue; i++ {
 				keys = append(keys, []byte(this.DBKey(i)))
 			}
 			for i := 0; i < this.Pos; i++ {
@@ -236,7 +232,7 @@ func init() {
 
 	temp_bytes = &sync.Pool{
 		New: func() interface{} {
-			return make([][]byte, Max_message_queue, Max_message_queue)
+			return make([][]byte, 0, Max_message_queue)
 		},
 	}
 
@@ -279,7 +275,7 @@ func init() {
 					q := OfflineTopicMap[topic]
 					OfflineTopicRWmux.RUnlock()
 					if q == nil {
-						q = NewOfflineTopicQueue(Max_message_queue, topic)
+						q = NewOfflineTopicQueue(topic)
 
 						OfflineTopicRWmux.Lock()
 						OfflineTopicMap[topic] = q
