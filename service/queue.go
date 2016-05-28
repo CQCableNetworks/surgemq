@@ -1,9 +1,7 @@
 package service
 
 import (
-	"encoding/binary"
 	"fmt"
-	"github.com/boltdb/bolt"
 	"github.com/nagae-memooff/config"
 	"github.com/nagae-memooff/surgemq/topics"
 	"github.com/surgemq/message"
@@ -20,7 +18,6 @@ var (
 	OfflineTopicMap            = make(map[string]*OfflineTopicQueue)
 	OfflineTopicQueueProcessor = make(chan *message.PublishMessage, 8192)
 	OfflineTopicCleanProcessor = make(chan string, 128)
-	OfflineTopicPayloadUseGzip bool
 
 	ClientMap          = make(map[string]*net.Conn)
 	ClientMapProcessor = make(chan ClientHash, 1024)
@@ -33,7 +30,6 @@ var (
 	MessageQueueStore string
 	temp_bytes        *sync.Pool
 
-	BoltDB  *bolt.DB
 	LevelDB *leveldb.DB
 )
 
@@ -58,49 +54,37 @@ type ClientHash struct {
 
 // 定义一个离线消息队列的结构体，保存一个二维byte数组和一个位置
 type OfflineTopicQueue struct {
-	Topic      string
-	Q          [][]byte
-	Pos        int
-	Length     int
-	Cleaned    bool
-	Gziped     bool
-	TopicBytes []byte
-	lock       sync.RWMutex
+	Topic   string
+	Q       [][]byte
+	Pos     int
+	Length  int
+	Cleaned bool
+	lock    sync.RWMutex
 }
 
 func NewOfflineTopicQueue(length int, topic string) (mq *OfflineTopicQueue) {
 	var (
-		q  [][]byte
-		t  string
-		tb []byte
+		q [][]byte
+		t string
 	)
 	switch MessageQueueStore {
 	case "local":
 		t = ""
 		q = make([][]byte, length, length)
-		tb = nil
 	case "redis":
 		t = topic
 		q = nil
-		tb = nil
-	case "bolt":
-		t = topic
-		q = nil
-		tb = []byte(topic)
 	case "leveldb":
 		t = topic
 		q = nil
-		tb = nil
 	}
 
 	mq = &OfflineTopicQueue{
-		Topic:      t,
-		Q:          q,
-		Pos:        0,
-		Length:     length,
-		Cleaned:    true,
-		TopicBytes: tb,
-		Gziped:     OfflineTopicPayloadUseGzip,
+		Topic:   t,
+		Q:       q,
+		Pos:     0,
+		Length:  length,
+		Cleaned: true,
 	}
 
 	return mq
@@ -114,62 +98,20 @@ func (this *OfflineTopicQueue) Add(msg_bytes []byte) {
 		this.Q = make([][]byte, this.Length, this.Length)
 	}
 
-	// 判断是否gzip，如果是，则压缩后再存入
-	if this.Gziped {
-		mb, err := Gzip(msg_bytes)
+	switch MessageQueueStore {
+	case "local":
+		this.Q[this.Pos] = msg_bytes
+	case "redis":
+		_, err := topics.RedisDo("set", this.DBKey(this.Pos), msg_bytes)
 		if err != nil {
-			Log.Errorc(func() string { return fmt.Sprintf("gzip failed. msg: %s, err: %s", msg_bytes, err) })
-			return
-		}
-
-		switch MessageQueueStore {
-		case "local":
-			this.Q[this.Pos] = mb
-		case "redis":
-			_, err := topics.RedisDo("set", this.RedisKey(this.Pos), mb)
-			if err != nil {
-				Log.Errorc(func() string {
-					return fmt.Sprintf("failed to save offline msg to redis: %s", err.Error())
-				})
-			}
-		case "bolt":
-			BoltDB.Update(func(tx *bolt.Tx) error {
-				b, err := tx.CreateBucketIfNotExists(this.TopicBytes)
-				if err != nil {
-					return err
-				}
-				return b.Put(this.PosToB(), mb)
+			Log.Errorc(func() string {
+				return fmt.Sprintf("failed to save offline msg to redis: %s", err.Error())
 			})
-		case "leveldb":
-			err := LevelDB.Put(this.LevelDBKey(this.Pos), mb, nil)
-			if err != nil {
-				Log.Error("leveldb: %s", err.Error())
-			}
 		}
-	} else {
-		switch MessageQueueStore {
-		case "local":
-			this.Q[this.Pos] = msg_bytes
-		case "redis":
-			_, err := topics.RedisDo("set", this.RedisKey(this.Pos), msg_bytes)
-			if err != nil {
-				Log.Errorc(func() string {
-					return fmt.Sprintf("failed to save offline msg to redis: %s", err.Error())
-				})
-			}
-		case "bolt":
-			BoltDB.Update(func(tx *bolt.Tx) error {
-				b, err := tx.CreateBucketIfNotExists(this.TopicBytes)
-				if err != nil {
-					return err
-				}
-				return b.Put(this.PosToB(), msg_bytes)
-			})
-		case "leveldb":
-			err := LevelDB.Put(this.LevelDBKey(this.Pos), msg_bytes, nil)
-			if err != nil {
-				Log.Error("leveldb: %s", err.Error())
-			}
+	case "leveldb":
+		err := LevelDB.Put([]byte(this.DBKey(this.Pos)), msg_bytes, nil)
+		if err != nil {
+			Log.Error("leveldb: %s", err.Error())
 		}
 	}
 
@@ -200,7 +142,7 @@ func (this *OfflineTopicQueue) Clean() {
 	case "redis":
 		keys := make([]interface{}, this.Length, this.Length)
 		for i := 0; i < this.Length; i++ {
-			keys[i] = this.RedisKey(i)
+			keys[i] = this.DBKey(i)
 		}
 
 		_, err := topics.RedisDoDel(keys...)
@@ -209,16 +151,10 @@ func (this *OfflineTopicQueue) Clean() {
 				return fmt.Sprintf("failed to clean offline msg to redis: %s", err.Error())
 			})
 		}
-	case "bolt":
-		BoltDB.Update(func(tx *bolt.Tx) error {
-			err := tx.DeleteBucket(this.TopicBytes)
-
-			return err
-		})
 	case "leveldb":
 		keys := make([][]byte, this.Length, this.Length)
 		for i := 0; i < this.Length; i++ {
-			keys[i] = this.LevelDBKey(i)
+			keys[i] = []byte(this.DBKey(i))
 		}
 
 		var err error
@@ -235,7 +171,6 @@ func (this *OfflineTopicQueue) Clean() {
 	this.Pos = 0
 	this.Cleaned = true
 	this.Length = Max_message_queue
-	this.Gziped = OfflineTopicPayloadUseGzip
 }
 
 func (this *OfflineTopicQueue) GetAll() (msg_bytes [][]byte) {
@@ -247,6 +182,7 @@ func (this *OfflineTopicQueue) GetAll() (msg_bytes [][]byte) {
 
 		//     msg_bytes = make([][]byte, this.Length, this.Length)
 		//     msg_bytes = temp_bytes.Get().([][]byte)
+		// FIXME 用池子优化
 		var msg_bytes [][]byte
 
 		switch MessageQueueStore {
@@ -256,10 +192,10 @@ func (this *OfflineTopicQueue) GetAll() (msg_bytes [][]byte) {
 		case "redis":
 			var keys []interface{}
 			for i := this.Pos; i < this.Length; i++ {
-				keys = append(keys, this.RedisKey(i))
+				keys = append(keys, this.DBKey(i))
 			}
 			for i := 0; i < this.Pos; i++ {
-				keys = append(keys, this.RedisKey(i))
+				keys = append(keys, this.DBKey(i))
 			}
 
 			var err error
@@ -267,32 +203,13 @@ func (this *OfflineTopicQueue) GetAll() (msg_bytes [][]byte) {
 			if err != nil {
 				Log.Errorc(func() string { return err.Error() })
 			}
-		case "bolt":
-			BoltDB.View(func(tx *bolt.Tx) error {
-				b := tx.Bucket(this.TopicBytes)
-
-				var keys [][]byte
-				for i := this.Pos; i < this.Length; i++ {
-					keys = append(keys, PosToB(i))
-				}
-				for i := 0; i < this.Pos; i++ {
-					keys = append(keys, PosToB(i))
-				}
-
-				for _, key := range keys {
-					msg_bytes = append(msg_bytes, b.Get(key))
-				}
-
-				return nil
-			})
-
 		case "leveldb":
 			var keys [][]byte
 			for i := this.Pos; i < this.Length; i++ {
-				keys = append(keys, this.LevelDBKey(i))
+				keys = append(keys, []byte(this.DBKey(i)))
 			}
 			for i := 0; i < this.Pos; i++ {
-				keys = append(keys, this.LevelDBKey(i))
+				keys = append(keys, []byte(this.DBKey(i)))
 			}
 
 			for _, key := range keys {
@@ -307,75 +224,12 @@ func (this *OfflineTopicQueue) GetAll() (msg_bytes [][]byte) {
 
 		}
 
-		// 判断是否gzip存储，如果是，则解压后再取出
-		if this.Gziped {
-			for i, bytes := range msg_bytes {
-				if bytes != nil {
-					mb, err := Gunzip(bytes)
-					if err != nil {
-						Log.Errorc(func() string { return err.Error() })
-					}
-
-					msg_bytes[i] = mb
-				}
-			}
-		}
 		return msg_bytes
 	}
 }
 
-func (this *OfflineTopicQueue) RedisKey(pos int) (key string) {
+func (this *OfflineTopicQueue) DBKey(pos int) (key string) {
 	return fmt.Sprintf("/t/%s:%d", this.Topic, pos)
-}
-
-func (this *OfflineTopicQueue) LevelDBKey(pos int) (key []byte) {
-	return []byte(fmt.Sprintf("/t/%s:%d", this.Topic, pos))
-}
-
-func (this *OfflineTopicQueue) PosToB() []byte {
-	b := make([]byte, 8)
-	binary.BigEndian.PutUint64(b, uint64(this.Pos))
-	return b
-}
-
-//如果是redis内的，则不支持转换
-func (this *OfflineTopicQueue) ConvertToGzip() (err error) {
-	if this.Cleaned {
-		return nil
-	} else if MessageQueueStore == "local" && !this.Gziped {
-		this.Gziped = true
-		for i, bytes := range this.Q {
-			if bytes != nil {
-				mb, err := Gzip(bytes)
-				if err != nil {
-					Log.Errorc(func() string { return err.Error() })
-				}
-
-				this.Q[i] = mb
-			}
-		}
-	}
-	return nil
-}
-
-//如果是redis内的，则不支持转换
-func (this *OfflineTopicQueue) ConvertToUnzip() (err error) {
-	if this.Cleaned {
-		return nil
-	} else if MessageQueueStore == "local" && this.Gziped {
-		this.Gziped = false
-		for i, bytes := range this.Q {
-			if bytes != nil {
-				mb, err := Gunzip(bytes)
-				if err != nil {
-					Log.Errorc(func() string { return err.Error() })
-				}
-
-				this.Q[i] = mb
-			}
-		}
-	}
-	return nil
 }
 
 func init() {
@@ -458,14 +312,4 @@ func init() {
 			}
 		}
 	}()
-}
-
-func PosToB(i int) []byte {
-	b := make([]byte, 8)
-	binary.BigEndian.PutUint64(b, uint64(i))
-	return b
-}
-
-func BToPOS(b []byte) int {
-	return int(binary.BigEndian.Uint64(b))
 }
