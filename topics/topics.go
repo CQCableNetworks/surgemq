@@ -29,23 +29,6 @@ import (
 	"github.com/surgemq/message"
 )
 
-const (
-	// MWC is the multi-level wildcard
-	MWC = "#"
-
-	// SWC is the single level wildcard
-	SWC = "+"
-
-	// SEP is the topic level separator
-	SEP = "/"
-
-	// SYS is the starting character of the system level topics
-	SYS = "$"
-
-	// Both wildcards
-	_WC = "#+"
-)
-
 var (
 	// ErrAuthFailure is returned when the user/pass supplied are invalid
 	ErrAuthFailure = errors.New("auth: Authentication failure")

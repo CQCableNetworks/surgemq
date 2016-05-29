@@ -117,7 +117,7 @@ func (this *Client) Connect(uri string, msg *message.ConnectMessage) (err error)
 		return err
 	}
 
-	p := topics.NewMemProvider()
+	p := topics.NewMXProvider()
 	topics.Register(this.svc.sess.ID(), p)
 
 	this.svc.topicsMgr, err = topics.NewManager(this.svc.sess.ID())

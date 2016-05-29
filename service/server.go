@@ -54,7 +54,7 @@ const (
 	DefaultTimeoutRetries   = 3
 	DefaultSessionsProvider = "mem"
 	DefaultAuthenticator    = "mockSuccess"
-	DefaultTopicsProvider   = "mem"
+	DefaultTopicsProvider   = "mx"
 )
 
 // Server is a library implementation of the MQTT server that, as best it can, complies
@@ -86,7 +86,7 @@ type Server struct {
 	SessionsProvider string
 
 	// TopicsProvider is the topic store that keeps all the subscription topics.
-	// If not set then default to "mem".
+	// If not set then default to "mx".
 	TopicsProvider string
 
 	// authMgr is the authentication manager that we are going to use for authenticating
@@ -656,7 +656,7 @@ func (this *Server) checkConfiguration() error {
 		}
 
 		if this.TopicsProvider == "" {
-			this.TopicsProvider = "mem"
+			this.TopicsProvider = "mx"
 		}
 
 		this.topicsMgr, err = topics.NewManager(this.TopicsProvider)

@@ -23,11 +23,9 @@ var _ TopicsProvider = (*mxTopics)(nil)
 type mxTopics struct {
 	// Sub/unsub mutex
 	smu sync.RWMutex
-	// Subscription tree
-	//   sroot *mxsnode
 
 	// subscription map
-	//实际类型应该是： map[string]*onPublishFunc
+	// 实际类型应该是： map[string]*onPublishFunc
 	subscriber map[string]interface{}
 }
 
