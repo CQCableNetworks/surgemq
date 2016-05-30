@@ -230,12 +230,6 @@ func (this *OfflineTopicQueue) DBKey(pos int) (key string) {
 
 func init() {
 
-	TempBytes = &sync.Pool{
-		New: func() interface{} {
-			return make([][]byte, 0, Max_message_queue)
-		},
-	}
-
 	go func() {
 		sleep_time := time.Duration(config.GetInt("publish_timeout_second")+10) * time.Second
 		for {
