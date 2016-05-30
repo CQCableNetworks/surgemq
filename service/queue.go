@@ -135,10 +135,10 @@ func (this *OfflineTopicQueue) Clean() {
 			this.Q[i] = nil
 		}
 	case "redis":
-		//     keys := make([]interface{}, this.Length, this.Length)
-		keys := TempBytes.Get().([]interface{})
+		keys := make([]interface{}, 0, Max_message_queue)
+		//     keys := TempBytes.Get().([]interface{})
 		for i := 0; i < Max_message_queue; i++ {
-			keys[i] = this.DBKey(i)
+			keys = append(keys, this.DBKey(i))
 		}
 
 		_, err := topics.RedisDoDel(keys...)
@@ -151,7 +151,7 @@ func (this *OfflineTopicQueue) Clean() {
 		keys := TempBytes.Get().([][]byte)
 		//     keys := make([][]byte, this.Length, this.Length)
 		for i := 0; i < Max_message_queue; i++ {
-			keys[i] = []byte(this.DBKey(i))
+			keys = append(keys, []byte(this.DBKey(i)))
 		}
 
 		var err error
@@ -184,8 +184,8 @@ func (this *OfflineTopicQueue) GetAll() (msg_bytes [][]byte) {
 			msg_bytes = this.Q[this.Pos:Max_message_queue]
 			msg_bytes = append(msg_bytes, this.Q[0:this.Pos]...)
 		case "redis":
-			//       keys := make([]interface{}, 0, Max_message_queue)
-			keys := TempBytes.Get().([]interface{})
+			keys := make([]interface{}, 0, Max_message_queue)
+			//       keys := TempBytes.Get().([]interface{})
 			for i := this.Pos; i < Max_message_queue; i++ {
 				keys = append(keys, this.DBKey(i))
 			}
