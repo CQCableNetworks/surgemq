@@ -530,7 +530,7 @@ func (this *service) pushOfflineMessage(topic string) (err error) {
 	for i, _ := range offline_msgs {
 		offline_msgs[i] = nil
 	}
-	temp_bytes.Put(offline_msgs)
+	//   TempBytes.Put(offline_msgs)
 	return nil
 }
 

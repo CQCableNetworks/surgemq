@@ -28,7 +28,7 @@ var (
 
 	Max_message_queue int
 	MessageQueueStore string
-	temp_bytes        *sync.Pool
+	TempBytes         *sync.Pool
 
 	LevelDB *leveldb.DB
 )
@@ -136,7 +136,7 @@ func (this *OfflineTopicQueue) Clean() {
 		}
 	case "redis":
 		//     keys := make([]interface{}, this.Length, this.Length)
-		keys := temp_bytes.Get().([]interface{})
+		keys := TempBytes.Get().([]interface{})
 		for i := 0; i < Max_message_queue; i++ {
 			keys[i] = this.DBKey(i)
 		}
@@ -148,7 +148,7 @@ func (this *OfflineTopicQueue) Clean() {
 			})
 		}
 	case "leveldb":
-		keys := temp_bytes.Get().([][]byte)
+		keys := TempBytes.Get().([][]byte)
 		//     keys := make([][]byte, this.Length, this.Length)
 		for i := 0; i < Max_message_queue; i++ {
 			keys[i] = []byte(this.DBKey(i))
@@ -176,7 +176,7 @@ func (this *OfflineTopicQueue) GetAll() (msg_bytes [][]byte) {
 		this.lock.RLock()
 		defer this.lock.RUnlock()
 
-		msg_bytes = temp_bytes.Get().([][]byte)
+		msg_bytes = TempBytes.Get().([][]byte)
 		//     var msg_bytes [][]byte
 
 		switch MessageQueueStore {
@@ -185,7 +185,7 @@ func (this *OfflineTopicQueue) GetAll() (msg_bytes [][]byte) {
 			msg_bytes = append(msg_bytes, this.Q[0:this.Pos]...)
 		case "redis":
 			//       keys := make([]interface{}, 0, Max_message_queue)
-			keys := temp_bytes.Get().([]interface{})
+			keys := TempBytes.Get().([]interface{})
 			for i := this.Pos; i < Max_message_queue; i++ {
 				keys = append(keys, this.DBKey(i))
 			}
@@ -200,7 +200,7 @@ func (this *OfflineTopicQueue) GetAll() (msg_bytes [][]byte) {
 			}
 		case "leveldb":
 			//       var keys [][]byte
-			keys := temp_bytes.Get().([][]byte)
+			keys := TempBytes.Get().([][]byte)
 			for i := this.Pos; i < Max_message_queue; i++ {
 				keys = append(keys, []byte(this.DBKey(i)))
 			}
@@ -230,7 +230,7 @@ func (this *OfflineTopicQueue) DBKey(pos int) (key string) {
 
 func init() {
 
-	temp_bytes = &sync.Pool{
+	TempBytes = &sync.Pool{
 		New: func() interface{} {
 			return make([][]byte, 0, Max_message_queue)
 		},
