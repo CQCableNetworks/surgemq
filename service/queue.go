@@ -285,21 +285,25 @@ func init() {
 					_return_tmp_msg(msg)
 				}(msg.Topic(), msg.Payload())
 
-			case client := <-ClientMapProcessor:
-				client_id := client.Name
-				client_conn := client.Conn
-
-				if ClientMap[client_id] != nil {
-					old_conn := *ClientMap[client_id]
-					old_conn.Close()
-
-					Log.Debugc(func() string {
-						return fmt.Sprintf("client connected with same client_id: %s. close old connection.", client_id)
-					})
-				}
-				ClientMap[client_id] = client_conn
-
 			}
 		}
 	}()
+
+	go func() {
+		for client := range ClientMapProcessor {
+			client_id := client.Name
+			client_conn := client.Conn
+
+			if ClientMap[client_id] != nil {
+				old_conn := *ClientMap[client_id]
+				old_conn.Close()
+
+				Log.Debugc(func() string {
+					return fmt.Sprintf("client connected with same client_id: %s. close old connection.", client_id)
+				})
+			}
+			ClientMap[client_id] = client_conn
+		}
+	}()
+
 }
