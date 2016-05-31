@@ -20,7 +20,7 @@ var (
 	OfflineTopicCleanProcessor = make(chan string, 128)
 
 	ClientMap          = make(map[string]*net.Conn)
-	ClientMapProcessor = make(chan ClientHash, 1024)
+	ClientMapProcessor = make(chan ClientHash, 8192)
 
 	PktId = uint32(1)
 
