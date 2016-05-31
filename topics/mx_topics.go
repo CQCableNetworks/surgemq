@@ -12,10 +12,11 @@ import (
 
 var (
 	// MXMaxQosAllowed is the maximum QOS supported by this server
-	MXMaxQosAllowed = message.QosAtLeastOnce
-	RedisPool       *redis.Pool
-	Channelcache    map[string]string
-	cmux            sync.RWMutex
+	MXMaxQosAllowed     = message.QosAtLeastOnce
+	RedisPool           *redis.Pool
+	Channelcache        map[string]string
+	ChannelReversecache map[string]string
+	Cmux                sync.RWMutex
 )
 
 var _ TopicsProvider = (*mxTopics)(nil)
@@ -124,9 +125,9 @@ func checkValidchannel(client_id, topic string) bool {
 
 func GetUserTopic(client_id string) (topic string) {
 	//   defer fmt.Printf("%s get topic: %s\n", client_id, topic)
-	cmux.RLock()
+	Cmux.RLock()
 	topic = Channelcache[client_id]
-	cmux.RUnlock()
+	Cmux.RUnlock()
 	if topic != "" {
 		return
 	}
@@ -145,9 +146,10 @@ func GetUserTopic(client_id string) (topic string) {
 	}
 
 	topic = "/u/" + data
-	cmux.Lock()
+	Cmux.Lock()
 	Channelcache[client_id] = topic
-	cmux.Unlock()
+	ChannelReversecache[topic] = client_id
+	Cmux.Unlock()
 	return
 }
 
@@ -168,7 +170,11 @@ func LoadChannelCache() {
 		fmt.Println("长度不一致，不缓存了！")
 	} else {
 		for i := 0; i < len(channels); i++ {
-			Channelcache[client_ids[i]] = "/u/" + channels[i]
+			topic := "/u/" + channels[i]
+			client_id := client_ids[i]
+
+			Channelcache[client_id] = topic
+			ChannelReversecache[topic] = client_id
 		}
 	}
 }

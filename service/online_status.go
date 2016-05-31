@@ -1,6 +1,7 @@
 package service
 
 import (
+	"github.com/nagae-memooff/surgemq/topics"
 	"io"
 	"sync"
 	"time"
@@ -83,4 +84,19 @@ func SetOnlineStatus(key string, online bool, lasttime time.Time, conn *io.Close
 
 func init() {
 	list = make(map[string]*Status)
+}
+
+func IsOnline(topic string) (online bool) {
+	if topic == OnlineStatusChannel {
+		return true
+	}
+
+	lock.RLock()
+	defer lock.RUnlock()
+
+	topics.Cmux.RLock()
+	client_id := topics.ChannelReversecache[topic]
+	topics.Cmux.RUnlock()
+
+	return list[client_id].IsOnline()
 }

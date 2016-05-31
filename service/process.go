@@ -552,6 +552,13 @@ func (this *service) postPublish(msg *message.PublishMessage) (err error) {
 	//   }
 
 	//   var subs []interface{}
+	topic := string(msg.Topic())
+
+	if !IsOnline(topic) {
+		OfflineTopicQueueProcessor <- msg
+		return nil
+	}
+
 	subs := _get_temp_subs()
 	defer _return_temp_subs(subs)
 
@@ -566,7 +573,7 @@ func (this *service) postPublish(msg *message.PublishMessage) (err error) {
 	//   Log.Errorc(func() string{ return fmt.Sprintf("(%s) Publishing to topic %q and %d subscribers", this.cid(), string(msg.Topic()), len(this.subs))})
 	//   fmt.Printf("value: %v\n", config.GetModel())
 	//   done := make(chan bool)
-	pending_status := NewPendingStatus(string(msg.Topic()), msg)
+	pending_status := NewPendingStatus(topic, msg)
 	pkt_id := msg.PacketId()
 	PendingQueue[pkt_id] = pending_status
 
@@ -642,6 +649,48 @@ func (this *service) getOfflineMsg(topic string) (msgs [][]byte) {
 	return msgs
 }
 
+func (this *service) retryPublish(msg *message.PublishMessage) (err error) {
+	//   if msg.Retain() {
+	//     if err = this.topicsMgr.Retain(msg); err != nil {
+	//       Log.Errorc(func() string{ return fmt.Sprintf("(%s) Error retaining message: %v", this.cid(), err)})
+	//     }
+	//   }
+
+	//   var subs []interface{}
+	topic := string(msg.Topic())
+
+	subs := _get_temp_subs()
+	defer _return_temp_subs(subs)
+
+	err = this.topicsMgr.Subscribers(msg.Topic(), msg.QoS(), &subs, nil)
+	if err != nil {
+		Log.Errorc(func() string {
+			return fmt.Sprintf("(%s) Error retrieving subscribers list: %v", this.cid(), err)
+		})
+		return err
+	}
+
+	pending_status := NewPendingStatus(topic, msg)
+	pkt_id := msg.PacketId()
+	PendingQueue[pkt_id] = pending_status
+
+	for _, s := range subs {
+		if s != nil {
+			fn, ok := s.(*OnPublishFunc)
+			if !ok {
+				Log.Errorc(func() string {
+					return fmt.Sprintf("Invalid onPublish Function: %T", s)
+				})
+				return fmt.Errorf("Invalid onPublish Function")
+			} else {
+				(*fn)(msg)
+			}
+		}
+	}
+
+	return nil
+}
+
 // 判断消息是否已读
 func (this *service) handlePendingMessage(msg *message.PublishMessage, pending_status *PendingStatus) {
 	// 如果QOS=0,则无需等待直接返回
@@ -650,7 +699,6 @@ func (this *service) handlePendingMessage(msg *message.PublishMessage, pending_s
 	}
 
 	// 将msg按照pkt_id，存入pending队列
-	// 如果指定时间后，msg仍然在队列中，说明未收到回包，需要将消息放到OfflineTopicQueueProcessor中处理
 	pkt_id := msg.PacketId()
 	//   pending_msg := NewPendingMessage(msg)
 
@@ -658,12 +706,20 @@ func (this *service) handlePendingMessage(msg *message.PublishMessage, pending_s
 	case <-pending_status.Done:
 	// 消息已成功接收，不再等待
 	case <-time.After(time.Second * MsgPendingTime):
-		// 没有回ack，放到离线队列里
-		Log.Debugc(func() string {
-			return fmt.Sprintf("(%s) receive ack timeout. send msg to offline msg queue.topic: %s", this.cid(), msg.Topic())
-			//       return fmt.Sprintf("(%s) receive ack timeout. send msg to offline msg queue.topic: %s, payload: %s", this.cid(), msg.Topic(),msg.Payload())
-		})
-		OfflineTopicQueueProcessor <- msg
+		// 重试一次
+		this.retryPublish(msg)
+
+		select {
+		case <-pending_status.Done:
+			// 重发的消息已成功接收，不再等待
+		case <-time.After(time.Second * MsgPendingTime):
+			// 没有回ack，放到离线队列里
+			Log.Debugc(func() string {
+				return fmt.Sprintf("(%s) receive ack timeout. send msg to offline msg queue.topic: %s", this.cid(), msg.Topic())
+				//       return fmt.Sprintf("(%s) receive ack timeout. send msg to offline msg queue.topic: %s, payload: %s", this.cid(), msg.Topic(),msg.Payload())
+			})
+			OfflineTopicQueueProcessor <- msg
+		}
 	}
 	PendingQueue[pkt_id] = nil
 }
