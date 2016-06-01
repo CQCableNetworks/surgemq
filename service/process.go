@@ -693,7 +693,7 @@ func (this *service) retryPublish(msg *message.PublishMessage) (err error) {
 // 判断消息是否已读
 func (this *service) handlePendingMessage(msg *message.PublishMessage, pending_status *PendingStatus) {
 	// 如果QOS=0,则无需等待直接返回
-	if msg.QoS() == message.QosAtMostOnce {
+	if string(msg.Topic()) == OnlineStatusChannel {
 		return
 	}
 
