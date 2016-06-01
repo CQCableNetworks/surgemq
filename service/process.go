@@ -498,12 +498,13 @@ func (this *service) checkOnlineStatus(msg *message.PublishMessage) {
 
 //根据topic和payload 推送消息
 func (this *service) publishToTopic(topic string, payload []byte) {
-	Log.Debugc(func() string {
-		return fmt.Sprintf("(%s) send msg to topic: %s", this.cid(), topic)
-	})
 	tmp_msg := _get_tmp_msg()
 	tmp_msg.SetTopic([]byte(topic))
 	tmp_msg.SetPayload(payload)
+
+	Log.Debugc(func() string {
+		return fmt.Sprintf("(%s) send msg %d to topic: %s", this.cid(), tmp_msg.PacketId(), topic)
+	})
 	this.postPublish(tmp_msg)
 }
 
@@ -536,9 +537,7 @@ func (this *service) pushOfflineMessage(topic string) (err error) {
 
 // 获取一个递增的pkgid
 func getNextPktId() uint16 {
-	atomic.AddUint32(&PktId, 1)
-
-	return (uint16)(PktId)
+	return (uint16)(atomic.AddUint32(&PktId, 1))
 }
 
 // processPublish() is called when the server receives a PUBLISH message AND have completed
@@ -715,7 +714,7 @@ func (this *service) handlePendingMessage(msg *message.PublishMessage, pending_s
 		case <-time.After(time.Second * MsgPendingTime):
 			// 没有回ack，放到离线队列里
 			Log.Debugc(func() string {
-				return fmt.Sprintf("(%s) receive ack timeout. send msg to offline msg queue.topic: %s", this.cid(), msg.Topic())
+				return fmt.Sprintf("(%s) receive ack %d timeout. send msg to offline msg queue.topic: %s", this.cid(), msg.PacketId(), msg.Topic())
 				//       return fmt.Sprintf("(%s) receive ack timeout. send msg to offline msg queue.topic: %s, payload: %s", this.cid(), msg.Topic(),msg.Payload())
 			})
 			OfflineTopicQueueProcessor <- msg
