@@ -18,11 +18,9 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"github.com/pquerna/ffjson/ffjson"
 	"io"
 	"net"
 	//   "net/url"
-	"encoding/base64"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -192,155 +190,21 @@ func (this *Server) ListenAndServe() error {
 
 	//     _, err := url.Parse(uri)
 	if this.TopicsProvider == "mx" {
-		OnGroupPublish = func(msg *message.PublishMessage, this *service) (err error) {
-			var (
-				broadcast_msg BroadCastMessage
-				payload       []byte
-			)
-
-			err = ffjson.Unmarshal(msg.Payload(), &broadcast_msg)
-			if err != nil {
-				Log.Errorc(func() string {
-					return fmt.Sprintf("can't parse message json: %s", msg.Payload())
-				})
-				return
-			}
-
-			payload, err = base64.StdEncoding.DecodeString(broadcast_msg.Payload)
-			if err != nil {
-				Log.Errorc(func() string {
-					return fmt.Sprintf("can't decode payload: %s", broadcast_msg.Payload)
-				})
-				return
-			}
-
-			n := 0
-			for _, client_id := range broadcast_msg.Clients {
-				topic := topics.GetUserTopic(client_id)
-				if topic == "" {
-					continue
-				}
-				n++
-
-				go this.publishToTopic(topic, payload)
-			}
-
-			Log.Infoc(func() string {
-				return fmt.Sprintf("(%s) process group message to %d/%d clients. payload size: %d", this.cid(), n, len(broadcast_msg.Clients), len(payload))
-			})
-
-			return
-		}
+		OnGroupPublish = mxOnGroupPublish
 
 		//根据pkt_id，将pending队列里的该条消息移除
-		processAck = func(pkt_id uint16, this *service) {
-			//   msg := PendingQueue[pkt_id]
-			//   if msg != nil {
-			//     msg.SetPayload(nil)
-			//   }
-			pending_status := PendingQueue[pkt_id]
-			if pending_status == nil {
-				// NOTE ios 旧版，mosquitto的bug会导致回ack包的时候，早已超时了
-				// 此外网络特别慢也有可能
-				// 导致收到ack的时候，按照对应的pkt_id，找不到东西
-				Log.Errorc(func() string {
-					return fmt.Sprintf("(%s) receive ack, but this pkt_id %d in queue is nil! ", this.cid(), pkt_id)
-				})
+		processAck = mxProcessAck
 
-				return
-			}
+		IsOnline = mxIsOnline
 
-			topic := topics.GetUserTopic(this.sess.ID())
-			if pending_status.Topic != topic && pending_status.Topic != OnlineStatusChannel {
-				// ack包的topic,与登记的不一致
-				Log.Errorc(func() string {
-					return fmt.Sprintf("(%s) receive ack, but the topic %s and %s is mismatch. ", this.cid(), pending_status.Topic, topic)
-				})
-				return
-			}
-
-			select {
-			case pending_status.Done <- true:
-				Log.Debugc(func() string {
-					return fmt.Sprintf("(%s) receive ack, remove msg from pending queue: %d", this.cid(), pkt_id)
-				})
-			default:
-				//说明有问题，只有两种情况： 堵死或者nil。
-				Log.Errorc(func() string {
-					return fmt.Sprintf("(%s) receive ack, but this value of this pkt_id %d in queue is %v. ", this.cid(), pkt_id, pending_status)
-				})
-			}
-		}
 	} else if this.TopicsProvider == "mt" {
 
-		OnGroupPublish = func(msg *message.PublishMessage, this *service) (err error) {
-			var (
-				broadcast_msg MtBroadCastMessage
-				payload       []byte
-			)
+		OnGroupPublish = mtOnGroupPublish
 
-			Log.Infoc(func() string {
-				return "receive group msgs.\n"
-			})
+		processAck = mtProcessAck
 
-			err = ffjson.Unmarshal(msg.Payload(), &broadcast_msg)
-			if err != nil {
-				Log.Errorc(func() string {
-					return fmt.Sprintf("can't parse message json: %s", msg.Payload())
-				})
-				return
-			}
+		IsOnline = mtIsOnline
 
-			payload, err = base64.StdEncoding.DecodeString(broadcast_msg.Payload)
-			if err != nil {
-				Log.Errorc(func() string {
-					return fmt.Sprintf("can't decode payload: %s", broadcast_msg.Payload)
-				})
-				return
-			}
-
-			for _, topic := range broadcast_msg.Clients {
-				go this.publishToTopic(topic, payload)
-			}
-
-			Log.Infoc(func() string {
-				return fmt.Sprintf("(%s) receive group message. clients: %d, payload size: %d", this.cid(), len(broadcast_msg.Clients), len(payload))
-			})
-
-			return
-		}
-
-		processAck = func(pkt_id uint16, this *service) {
-			//   msg := PendingQueue[pkt_id]
-			//   if msg != nil {
-			//     msg.SetPayload(nil)
-			//   }
-			pending_status := PendingQueue[pkt_id]
-			if pending_status == nil {
-				// NOTE ios 旧版，mosquitto的bug会导致回ack包的时候，早已超时了
-				// 此外网络特别慢也有可能
-				// 导致收到ack的时候，按照对应的pkt_id，找不到东西
-				Log.Errorc(func() string {
-					return fmt.Sprintf("(%s) receive ack, but this pkt_id %d in queue is nil! ", this.cid(), pkt_id)
-				})
-
-				return
-			}
-
-			//NOTE: 敏推不校验ack包
-
-			select {
-			case pending_status.Done <- true:
-				Log.Debugc(func() string {
-					return fmt.Sprintf("(%s) receive ack, remove msg from pending queue: %d", this.cid(), pkt_id)
-				})
-			default:
-				//说明有问题，只有两种情况： 堵死或者nil。
-				Log.Errorc(func() string {
-					return fmt.Sprintf("(%s) receive ack, but this value of this pkt_id %d in queue is %v. ", this.cid(), pkt_id, pending_status)
-				})
-			}
-		}
 	}
 
 	var err error

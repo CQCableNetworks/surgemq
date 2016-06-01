@@ -2,7 +2,6 @@ package topics
 
 import (
 	"fmt"
-	"github.com/garyburd/redigo/redis"
 	//   "github.com/nagae-memooff/config"
 	//   "github.com/nagae-memooff/surgemq/topics"
 	//   "github.com/nagae-memooff/surgemq/service"
@@ -11,12 +10,7 @@ import (
 )
 
 var (
-	// MXMaxQosAllowed is the maximum QOS supported by this server
-	MXMaxQosAllowed     = message.QosAtLeastOnce
-	RedisPool           *redis.Pool
-	Channelcache        map[string]string
-	ChannelReversecache map[string]string
-	Cmux                sync.RWMutex
+// MXMaxQosAllowed is the maximum QOS supported by this server
 )
 
 var _ TopicsProvider = (*mxTopics)(nil)

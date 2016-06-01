@@ -4,7 +4,6 @@ import (
 	"fmt"
 	//   "github.com/garyburd/redigo/redis"
 	//   "github.com/nagae-memooff/config"
-	//   "github.com/nagae-memooff/surgemq/topics"
 	//   "github.com/nagae-memooff/surgemq/service"
 	"github.com/surgemq/message"
 	"sync"
@@ -65,6 +64,12 @@ func (this *mtTopics) Subscribe(topic []byte, qos byte, sub interface{}, client_
 	this.subscriber[topic_str] = sub
 	this.smu.Unlock()
 
+	topic_str = string(topic)
+	Cmux.Lock()
+	Channelcache[client_id] = topic_str
+	ChannelReversecache[topic_str] = client_id
+	Cmux.Unlock()
+
 	return qos, nil
 }
 
@@ -104,4 +109,11 @@ func (this *mtTopics) Close() error {
 
 	this.subscriber = nil
 	return nil
+}
+
+func MTGetUserTopic(client_id string) (topic string) {
+	Cmux.RLock()
+	topic = Channelcache[client_id]
+	Cmux.RUnlock()
+	return
 }

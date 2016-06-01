@@ -4,9 +4,24 @@ import (
 	"fmt"
 	"github.com/garyburd/redigo/redis"
 	"github.com/nagae-memooff/config"
+	"github.com/surgemq/message"
 	"strings"
+	"sync"
 	"time"
 )
+
+var (
+	MXMaxQosAllowed     = message.QosAtLeastOnce
+	RedisPool           *redis.Pool
+	Channelcache        map[string]string
+	ChannelReversecache map[string]string
+	Cmux                sync.RWMutex
+)
+
+func init() {
+	Channelcache = make(map[string]string)
+	ChannelReversecache = make(map[string]string)
+}
 
 func NewRedisPool() *redis.Pool {
 	return &redis.Pool{
