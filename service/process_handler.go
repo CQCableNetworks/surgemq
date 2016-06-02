@@ -83,7 +83,7 @@ var mxProcessAck = func(pkt_id uint16, this *service) {
 	case <-time.After(time.Second * MsgPendingTime):
 		//说明有问题，只有两种情况： 堵死或者nil。
 		Log.Errorc(func() string {
-			return fmt.Sprintf("(%s) receive ack, but this value of this pkt_id %d in queue is %v. ", this.cid(), pkt_id, pending_status)
+			return fmt.Sprintf("(%s) receive ack %d but already timeout. payload len: %d.", this.cid(), pkt_id, len(pending_status.Msg.Payload()))
 		})
 	}
 }

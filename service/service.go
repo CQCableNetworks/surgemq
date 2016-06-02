@@ -170,15 +170,6 @@ func (this *service) start(client_id string) error {
 			return nil
 		}
 
-		// If this is a recovered session, then add any topics it subscribed before
-		topics, qoss, err := this.sess.Topics()
-		if err != nil {
-			return err
-		} else {
-			for i, t := range topics {
-				this.topicsMgr.Subscribe([]byte(t), qoss[i], &this.onpub, this.sess.ID())
-			}
-		}
 	}
 
 	// Processor is responsible for reading messages out of the buffer and processing
@@ -216,7 +207,7 @@ func (this *service) stop() {
 	defer func() {
 		// Let's recover from panic
 		if r := recover(); r != nil {
-			Log.Errorc(func() string { return fmt.Sprintf("(%s) Recovering from panic: %v", this.cid(), r) })
+			Log.Errorc(func() string { return fmt.Sprintf("(%s) Recovering from panic when stop service: %v", this.cid(), r) })
 		}
 	}()
 

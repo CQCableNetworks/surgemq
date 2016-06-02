@@ -61,7 +61,8 @@ type Session struct {
 	rbuf []byte
 
 	// topics stores all the topis for this session/client
-	topics map[string]byte
+	// topics map[string]byte
+	topics []string
 
 	// Initialized?
 	initted bool
@@ -99,7 +100,7 @@ func (this *Session) Init(msg *message.ConnectMessage) error {
 		this.Will.SetRetain(this.Cmsg.WillRetain())
 	}
 
-	this.topics = make(map[string]byte, 1)
+	this.topics = make([]string, 0, 1)
 
 	this.id = string(msg.ClientId())
 
@@ -159,7 +160,7 @@ func (this *Session) AddTopic(topic string, qos byte) error {
 		return fmt.Errorf("Session not yet initialized")
 	}
 
-	this.topics[topic] = qos
+	this.topics = append(this.topics, topic)
 
 	return nil
 }
@@ -172,7 +173,13 @@ func (this *Session) RemoveTopic(topic string) error {
 		return fmt.Errorf("Session not yet initialized")
 	}
 
-	delete(this.topics, topic)
+	//   delete(this.topics, topic)
+	for i, n := range this.topics {
+		if n == topic {
+			this.topics = append(this.topics[:i], this.topics[i+1:]...)
+			return nil
+		}
+	}
 
 	return nil
 }
@@ -185,17 +192,7 @@ func (this *Session) Topics() ([]string, []byte, error) {
 		return nil, nil, fmt.Errorf("Session not yet initialized")
 	}
 
-	var (
-		topics []string
-		qoss   []byte
-	)
-
-	for k, v := range this.topics {
-		topics = append(topics, k)
-		qoss = append(qoss, v)
-	}
-
-	return topics, qoss, nil
+	return this.topics, nil, nil
 }
 
 func (this *Session) ID() string {
