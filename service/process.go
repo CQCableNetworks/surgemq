@@ -554,6 +554,9 @@ func (this *service) postPublish(msg *message.PublishMessage) (err error) {
 	topic := string(msg.Topic())
 
 	if !IsOnline(topic) {
+		Log.Debugc(func() string {
+			return fmt.Sprintf("(%s) this client is offline, send %d to offline queue.", this.cid(), msg.PacketId())
+		})
 		OfflineTopicQueueProcessor <- msg
 		return nil
 	}
@@ -706,6 +709,9 @@ func (this *service) handlePendingMessage(msg *message.PublishMessage, pending_s
 	// 消息已成功接收，不再等待
 	case <-time.After(time.Second * MsgPendingTime):
 		// 重试一次
+		Log.Debugc(func() string {
+			return fmt.Sprintf("(%s) receive ack %d timeout. try to resend. topic: %s", this.cid(), msg.PacketId(), msg.Topic())
+		})
 		this.retryPublish(msg)
 
 		select {
