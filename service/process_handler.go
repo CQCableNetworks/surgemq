@@ -3,12 +3,21 @@ package service
 import (
 	//   "github.com/nagae-memooff/surgemq/auth"
 	//   "github.com/nagae-memooff/surgemq/sessions"
+	"crypto/tls"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"github.com/nagae-memooff/surgemq/topics"
 	"github.com/pquerna/ffjson/ffjson"
+	apns "github.com/sideshow/apns2"
 	"github.com/surgemq/message"
+	"strings"
 	"time"
+)
+
+var (
+	Cert      tls.Certificate
+	APNsTopic string
 )
 
 var mxOnGroupPublish = func(msg *message.PublishMessage, this *service) (err error) {
@@ -189,4 +198,41 @@ var mtIsOnline = func(topic string) (online bool) {
 	topics.Cmux.RUnlock()
 
 	return list[client_id].IsOnline()
+}
+
+// 处理苹果推送
+func onAPNsPush(msg *message.PublishMessage, this *service) (err error) {
+	Log.Infoc(func() string {
+		return fmt.Sprintf("(%s) receive apn message.", this.cid())
+	})
+
+	args := strings.SplitN(string(msg.Payload()), ":", 2)
+	if len(args) != 2 {
+		err = errors.New(fmt.Sprintf("(%s) parse apn message failed! payload is %s ", this.cid(), msg.Payload()))
+
+		Log.Errorc(func() string {
+			return err.Error()
+		})
+
+		return
+	}
+
+	token := args[0]
+	msg_json := args[1]
+
+	notification := &apns.Notification{}
+	notification.DeviceToken = token
+	notification.Topic = APNsTopic
+	notification.Payload = []byte(msg_json) // See Payload section below
+
+	client := apns.NewClient(Cert).Production()
+	res, err := client.Push(notification)
+
+	if err != nil {
+		Log.Errorc(func() string {
+			return fmt.Sprintf("(%s) push apn message failed. err: %s, res: %s", this.cid(), err, res)
+		})
+	}
+
+	return
 }

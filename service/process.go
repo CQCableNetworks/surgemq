@@ -433,7 +433,7 @@ func (this *service) preDispatchPublish(msg *message.PublishMessage) (err error)
 	case SendChannel:
 		go this.onReceiveBadge(msg)
 	case ApnPushChannel:
-	// TODO 处理苹果推送
+		go onAPNsPush(msg, this)
 	case OnlineStatusChannel:
 		go this.checkOnlineStatus(msg)
 	default:
