@@ -302,7 +302,7 @@ func (this *Server) ListenAndServe() error {
 				panic(err)
 				//         return
 			}
-			Log.Info("listening tcp: %v", tcp_host)
+			Log.Info("listening tcp apn: %v", tcp_host)
 
 			defer ln.Close()
 			var tempDelay time.Duration // how long to sleep on accept failure
