@@ -293,44 +293,6 @@ func (this *Server) ListenAndServe() error {
 			}
 		}()
 
-		go func() {
-			tcp_host := "0.0.0.0:2884"
-
-			ln, err := net.Listen("tcp", tcp_host)
-			if err != nil {
-				Log.Error(err)
-				panic(err)
-				//         return
-			}
-			Log.Info("listening tcp apn: %v", tcp_host)
-
-			defer ln.Close()
-			var tempDelay time.Duration // how long to sleep on accept failure
-
-			for {
-				conn, err := ln.Accept()
-
-				if err != nil {
-					// Borrowed from go1.3.3/src/pkg/net/http/server.go:1699
-					if ne, ok := err.(net.Error); ok && ne.Temporary() {
-						if tempDelay == 0 {
-							tempDelay = 5 * time.Millisecond
-						} else {
-							tempDelay *= 2
-						}
-						if max := 1 * time.Second; tempDelay > max {
-							tempDelay = max
-						}
-						Log.Error("server/ListenAndServe: Accept error: %v; retrying in %v", err, tempDelay)
-						time.Sleep(tempDelay)
-						continue
-					}
-					return
-				}
-
-				go this.handleConnection(conn)
-			}
-		}()
 	}
 
 	<-this.quit
