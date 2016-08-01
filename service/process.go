@@ -34,17 +34,21 @@ import (
 )
 
 var (
-	errDisconnect       = errors.New("Disconnect")
-	MsgPendingTime      time.Duration
-	OfflineTopicRWmux   sync.RWMutex
-	BroadCastChannel    string
-	SendChannel         string
-	ApnPushChannel      string
-	p                   *sync.Pool
-	MessagePool         *sync.Pool
-	OnGroupPublish      func(msg *message.PublishMessage, this *service) (err error)
-	processAck          func(pkt_id uint16, this *service)
-	OnlineStatusChannel = "/fdf406fadef0ba24f3bfe8bc00b7bb350901417f"
+	errDisconnect           = errors.New("Disconnect")
+	MsgPendingTime          time.Duration
+	OfflineTopicRWmux       sync.RWMutex
+	BroadCastChannel        string
+	SendChannel             string
+	ApnPushChannel          string
+	p                       *sync.Pool
+	MessagePool             *sync.Pool
+	OnGroupPublish          func(msg *message.PublishMessage, this *service) (err error)
+	onAPNsPush              func(msg *message.PublishMessage, this *service) (err error)
+	processAck              func(pkt_id uint16, this *service)
+	OnlineStatusChannel     = "/fdf406fadef0ba24f3bfe8bc00b7bb350901417f"
+	ApnInvalidTokensChannel = "/apn/invalid_token"
+
+	ApnInvalidTokens = []string{}
 )
 
 func init() {
@@ -434,6 +438,8 @@ func (this *service) preDispatchPublish(msg *message.PublishMessage) (err error)
 		go this.onReceiveBadge(msg)
 	case ApnPushChannel:
 		go onAPNsPush(msg, this)
+	case ApnInvalidTokensChannel:
+		go getInvalidApnTokens(this)
 	case OnlineStatusChannel:
 		go this.checkOnlineStatus(msg)
 	default:

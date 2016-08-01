@@ -6,6 +6,7 @@ import (
 	//   "github.com/nagae-memooff/surgemq/topics"
 	//   "github.com/nagae-memooff/surgemq/service"
 	"github.com/surgemq/message"
+	"strings"
 	"sync"
 )
 
@@ -108,9 +109,9 @@ func checkValidchannel(client_id, topic string) bool {
 	if client_id == "master_8859" {
 		//     Log.Printf("%s, %s",client_id, topic)
 		return true
-	}
-
-	if GetUserTopic(client_id) == topic {
+	} else if strings.HasPrefix(client_id, "/apn/invalid_tokens") {
+		return true
+	} else if GetUserTopic(client_id) == topic {
 		//     Log.Printf("%v, %s", data, err)
 		return true
 	}

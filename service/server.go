@@ -197,6 +197,7 @@ func (this *Server) ListenAndServe() error {
 
 		IsOnline = mxIsOnline
 
+		onAPNsPush = mxAPNsPush
 	} else if this.TopicsProvider == "mt" {
 
 		OnGroupPublish = mtOnGroupPublish
@@ -205,6 +206,7 @@ func (this *Server) ListenAndServe() error {
 
 		IsOnline = mtIsOnline
 
+		onAPNsPush = mtAPNsPush
 	}
 
 	var err error

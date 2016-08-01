@@ -201,7 +201,48 @@ var mtIsOnline = func(topic string) (online bool) {
 }
 
 // 处理苹果推送
-func onAPNsPush(msg *message.PublishMessage, this *service) (err error) {
+var mxAPNsPush = func(msg *message.PublishMessage, this *service) (err error) {
+	Log.Infoc(func() string {
+		return fmt.Sprintf("(%s) receive apn message.", this.cid())
+	})
+
+	args := strings.SplitN(string(msg.Payload()), ":", 2)
+	if len(args) != 2 {
+		err = errors.New(fmt.Sprintf("(%s) parse apn message failed! payload is %s ", this.cid(), msg.Payload()))
+
+		Log.Errorc(func() string {
+			return err.Error()
+		})
+
+		return
+	}
+
+	token := args[0]
+	msg_json := args[1]
+
+	notification := &apns.Notification{}
+	notification.DeviceToken = token
+	notification.Topic = APNsTopic
+	notification.Payload = []byte(msg_json) // See Payload section below
+
+	client := apns.NewClient(Cert).Production()
+	res, err := client.Push(notification)
+
+	if err != nil {
+		Log.Errorc(func() string {
+			return fmt.Sprintf("(%s) push apn message failed. err: %s, res: %s", this.cid(), err, res)
+		})
+
+		if res.StatusCode < 500 && res.StatusCode >= 400 {
+			ApnInvalidTokens = append(ApnInvalidTokens, token)
+		}
+	}
+
+	return
+}
+var mtAPNsPush = func(msg *message.PublishMessage, this *service) (err error) {
+	//TODO 证书从msg里取，需要预先定义
+
 	Log.Infoc(func() string {
 		return fmt.Sprintf("(%s) receive apn message.", this.cid())
 	})
@@ -235,4 +276,13 @@ func onAPNsPush(msg *message.PublishMessage, this *service) (err error) {
 	}
 
 	return
+}
+
+//推送不合法token列表，并清空
+func getInvalidApnTokens(this *service) (err error) {
+	payload := []byte(strings.Join(ApnInvalidTokens, ";"))
+	ApnInvalidTokens = []string{}
+
+	this.publishToTopic(ApnInvalidTokensChannel, payload)
+	return nil
 }
