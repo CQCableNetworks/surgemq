@@ -101,8 +101,9 @@ type Server struct {
 	// is closed, then it's a signal for it to shutdown as well.
 	quit chan struct{}
 
-	ln     net.Listener
-	ssl_ln net.Listener
+	ln      net.Listener
+	ssl_ln  net.Listener
+	japn_ln net.Listener
 
 	// A list of services created by the server. We keep track of them so we can
 	// gracefully shut them down if they are still alive when the server goes down.
@@ -297,6 +298,48 @@ func (this *Server) ListenAndServe() error {
 
 	}
 
+	if config.GetBool("japn_compatibility") {
+		go func() {
+			tcp_host := "0.0.0.0:2884"
+
+			this.japn_ln, err = net.Listen("tcp", tcp_host)
+			if err != nil {
+				Log.Error(err)
+				panic(err)
+				//         return
+			}
+			Log.Info("listening tcp: %v", tcp_host)
+
+			defer this.japn_ln.Close()
+			var tempDelay time.Duration // how long to sleep on accept failure
+
+			for {
+				conn, err := this.japn_ln.Accept()
+
+				if err != nil {
+					// Borrowed from go1.3.3/src/pkg/net/http/server.go:1699
+					if ne, ok := err.(net.Error); ok && ne.Temporary() {
+						if tempDelay == 0 {
+							tempDelay = 5 * time.Millisecond
+						} else {
+							tempDelay *= 2
+						}
+						if max := 1 * time.Second; tempDelay > max {
+							tempDelay = max
+						}
+						Log.Error("server/ListenAndServe: Accept error: %v; retrying in %v", err, tempDelay)
+						time.Sleep(tempDelay)
+						continue
+					}
+					return
+				}
+
+				go this.handleConnection(conn)
+			}
+		}()
+
+	}
+
 	<-this.quit
 	return nil
 }
@@ -347,8 +390,17 @@ func (this *Server) Close() error {
 
 	// We then close the net.Listener, which will force Accept() to return if it's
 	// blocked waiting for new connections.
-	this.ln.Close()
-	this.ssl_ln.Close()
+	if this.ln != nil {
+		this.ln.Close()
+	}
+
+	if this.ssl_ln != nil {
+		this.ssl_ln.Close()
+	}
+
+	if this.japn_ln != nil {
+		this.japn_ln.Close()
+	}
 
 	for _, svc := range this.svcs {
 		Log.Infoc(func() string {
