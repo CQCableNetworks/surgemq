@@ -12,12 +12,15 @@ import (
 	apns "github.com/sideshow/apns2"
 	"github.com/surgemq/message"
 	"strings"
+	"sync"
 	"time"
 )
 
 var (
 	Cert      tls.Certificate
 	APNsTopic string
+	mutex     sync.RWMutex
+	ApnClient *apns.Client
 )
 
 var mxOnGroupPublish = func(msg *message.PublishMessage, this *service) (err error) {
@@ -223,10 +226,9 @@ var mxAPNsPush = func(msg *message.PublishMessage, this *service) (err error) {
 	notification := &apns.Notification{}
 	notification.DeviceToken = token
 	notification.Topic = APNsTopic
-	notification.Payload = []byte(msg_json) // See Payload section below
+	notification.Payload = []byte(msg_json)
 
-	client := apns.NewClient(Cert).Production()
-	res, err := client.Push(notification)
+	res, err := ApnClient.Push(notification)
 
 	if err != nil {
 		Log.Errorc(func() string {
@@ -234,7 +236,9 @@ var mxAPNsPush = func(msg *message.PublishMessage, this *service) (err error) {
 		})
 
 		if res.StatusCode < 500 && res.StatusCode >= 400 {
+			mutex.Lock()
 			ApnInvalidTokens = append(ApnInvalidTokens, token)
+			mutex.Unlock()
 		}
 	}
 
@@ -280,8 +284,10 @@ var mtAPNsPush = func(msg *message.PublishMessage, this *service) (err error) {
 
 //推送不合法token列表，并清空
 func getInvalidApnTokens(this *service) (err error) {
+	mutex.RLock()
 	payload := []byte(strings.Join(ApnInvalidTokens, ";"))
 	ApnInvalidTokens = []string{}
+	mutex.RUnlock()
 
 	this.publishToTopic(ApnInvalidTokensChannel, payload)
 	return nil
