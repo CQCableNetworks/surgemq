@@ -198,7 +198,12 @@ func (this *Server) ListenAndServe() error {
 
 		IsOnline = mxIsOnline
 
-		onAPNsPush = mxAPNsPush
+		if config.GetBool("apn_always_reconnect") {
+			onAPNsPush = mxAPNsPush2
+		} else {
+			onAPNsPush = mxAPNsPush
+		}
+
 	} else if this.TopicsProvider == "mt" {
 
 		OnGroupPublish = mtOnGroupPublish

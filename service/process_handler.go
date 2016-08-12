@@ -244,6 +244,50 @@ var mxAPNsPush = func(msg *message.PublishMessage, this *service) (err error) {
 
 	return
 }
+
+//和原方法类似，区别是每次会重新建立连接，而不是一直试图复用一个连接。只支持生产证书。
+var mxAPNsPush2 = func(msg *message.PublishMessage, this *service) (err error) {
+	Log.Infoc(func() string {
+		return fmt.Sprintf("(%s) receive apn message.", this.cid())
+	})
+
+	args := strings.SplitN(string(msg.Payload()), ":", 2)
+	if len(args) != 2 {
+		err = errors.New(fmt.Sprintf("(%s) parse apn message failed! payload is %s ", this.cid(), msg.Payload()))
+
+		Log.Errorc(func() string {
+			return err.Error()
+		})
+
+		return
+	}
+
+	token := args[0]
+	msg_json := args[1]
+
+	notification := &apns.Notification{}
+	notification.DeviceToken = token
+	notification.Topic = APNsTopic
+	notification.Payload = []byte(msg_json)
+
+	client := apns.NewClient(Cert).Production()
+	res, err := client.Push(notification)
+
+	if err != nil {
+		Log.Errorc(func() string {
+			return fmt.Sprintf("(%s) push apn message failed. err: %s, res: %s", this.cid(), err, res)
+		})
+
+		if res.StatusCode < 500 && res.StatusCode >= 400 {
+			mutex.Lock()
+			ApnInvalidTokens = append(ApnInvalidTokens, token)
+			mutex.Unlock()
+		}
+	}
+
+	return
+}
+
 var mtAPNsPush = func(msg *message.PublishMessage, this *service) (err error) {
 	//TODO 证书从msg里取，需要预先定义
 
