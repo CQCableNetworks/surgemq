@@ -235,7 +235,7 @@ var mxAPNsPush = func(msg *message.PublishMessage, this *service) (err error) {
 			return fmt.Sprintf("(%s) push apn message failed. err: %s, res: %s", this.cid(), err, res)
 		})
 
-		if res.StatusCode < 500 && res.StatusCode >= 400 {
+		if (res == nil) || (res.StatusCode < 500 && res.StatusCode >= 400) {
 			mutex.Lock()
 			ApnInvalidTokens = append(ApnInvalidTokens, token)
 			mutex.Unlock()
