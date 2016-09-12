@@ -97,11 +97,16 @@ func (this *mxTopics) Retained(topic []byte, msgs *[]*message.PublishMessage) er
 }
 
 func (this *mxTopics) Close() error {
+	this.smu.Lock()
+
 	for key, _ := range this.subscriber {
 		delete(this.subscriber, key)
 	}
 
-	this.subscriber = nil
+	this.subscriber = make(map[string]interface{})
+
+	this.smu.Unlock()
+
 	return nil
 }
 
