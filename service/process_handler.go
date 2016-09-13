@@ -206,7 +206,7 @@ var mtIsOnline = func(topic string) (online bool) {
 // 处理苹果推送
 var mxAPNsPush = func(msg *message.PublishMessage, this *service) (err error) {
 	Log.Infoc(func() string {
-		return fmt.Sprintf("(%s) receive apn message.", this.cid())
+		return fmt.Sprintf("(%s) recieve apn message %d. ", this.cid(), msg.PacketId())
 	})
 
 	args := strings.SplitN(string(msg.Payload()), ":", 2)
@@ -232,7 +232,7 @@ var mxAPNsPush = func(msg *message.PublishMessage, this *service) (err error) {
 
 	if err != nil {
 		Log.Errorc(func() string {
-			return fmt.Sprintf("(%s) push apn message failed. err: %s, res: %s", this.cid(), err, res)
+			return fmt.Sprintf("(%s) push apn message %d to %s failed. err: %s, res: %s", this.cid(), msg.PacketId(), token, err, res)
 		})
 
 		if (res == nil) || (res.StatusCode < 500 && res.StatusCode >= 400) {
@@ -240,6 +240,10 @@ var mxAPNsPush = func(msg *message.PublishMessage, this *service) (err error) {
 			ApnInvalidTokens = append(ApnInvalidTokens, token)
 			mutex.Unlock()
 		}
+	} else {
+		Log.Debugc(func() string {
+			return fmt.Sprintf("(%s) push apn message %d to %s succeed. ", this.cid(), msg.PacketId(), token)
+		})
 	}
 
 	return
