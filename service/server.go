@@ -238,6 +238,9 @@ func (this *Server) ListenAndServe() error {
 
 			for {
 				conn, err := this.ssl_ln.Accept()
+				Log.Debugc(func() string {
+					return "accepted ssl connection."
+				})
 				if err != nil {
 					// Borrowed from go1.3.3/src/pkg/net/http/server.go:1699
 					if ne, ok := err.(net.Error); ok && ne.Temporary() {
@@ -252,7 +255,12 @@ func (this *Server) ListenAndServe() error {
 						Log.Error("server/ListenAndServe: Accept ssl error: %v; retrying in %v", err, tempDelay)
 						time.Sleep(tempDelay)
 						continue
+					} else {
+						Log.Errorc(func() string {
+							return fmt.Sprintf("ssl connection error: %s", err)
+						})
 					}
+
 					return
 				}
 
@@ -278,6 +286,9 @@ func (this *Server) ListenAndServe() error {
 
 			for {
 				conn, err := this.ln.Accept()
+				Log.Debugc(func() string {
+					return "accepted tcp connection."
+				})
 
 				if err != nil {
 					// Borrowed from go1.3.3/src/pkg/net/http/server.go:1699
@@ -293,6 +304,10 @@ func (this *Server) ListenAndServe() error {
 						Log.Error("server/ListenAndServe: Accept error: %v; retrying in %v", err, tempDelay)
 						time.Sleep(tempDelay)
 						continue
+					} else {
+						Log.Errorc(func() string {
+							return fmt.Sprintf("tcp connection error: %s", err)
+						})
 					}
 					return
 				}
