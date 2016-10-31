@@ -132,7 +132,7 @@ func (this *service) start(client_id string) error {
 
 	//   debug.PrintStack()
 	// Create the incoming ring buffer
-	Log.Debugc(func() string { return fmt.Sprintf("make new buffer for client: %s", client_id) })
+	Log.Debugc(func() string { return fmt.Sprintf("(%s) make new buffer for client.", this.cid()) })
 
 	if strings.HasPrefix(client_id, "master") || strings.HasPrefix(client_id, "ewhine") || strings.HasPrefix(client_id, "apn") {
 		this.in, err = newBuffer(MasterInBufferSize, this.server)

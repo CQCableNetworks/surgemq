@@ -499,11 +499,14 @@ func (this *Server) handleConnection(c io.Closer, atomic_id uint64) (err error) 
 		return err
 	}
 
+	c_id := string(req.ClientId())
+	c_hash := ClientHash{Name: c_id, Conn: &conn}
+
 	// Authenticate the user, if error, return error and exit
-	auth_info := auth.NewAuthInfo(req.Password(), req.ClientId())
+	auth_info := auth.NewAuthInfo(req.Password(), req.ClientId(), atomic_id)
 	if err = this.authMgr.Authenticate(string(req.Username()), auth_info); err != nil {
 		Log.Infoc(func() string {
-			return fmt.Sprintf("client auth failed. username: %s, client_id: %s", req.Username(), req.ClientId())
+			return fmt.Sprintf("(%d/%s) client auth failed. username: %s, client_id: %s", atomic_id, c_id, req.Username(), c_id)
 		})
 		resp.SetReturnCode(message.ErrBadUsernameOrPassword)
 		resp.SetSessionPresent(false)
@@ -531,8 +534,6 @@ func (this *Server) handleConnection(c io.Closer, atomic_id uint64) (err error) 
 		server:    this,
 	}
 
-	c_id := string(req.ClientId())
-	c_hash := ClientHash{Name: c_id, Conn: &conn}
 	ClientMapProcessor <- c_hash
 
 	err = this.getSession(svc, req, resp)
@@ -559,7 +560,7 @@ func (this *Server) handleConnection(c io.Closer, atomic_id uint64) (err error) 
 	//this.mu.Unlock()
 
 	Log.Debugc(func() string {
-		return fmt.Sprintf("client %s connected successfully.", c_id)
+		return fmt.Sprintf("(%s) client connected successfully.", svc.cid())
 	})
 
 	return nil

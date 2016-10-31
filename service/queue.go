@@ -250,7 +250,7 @@ func init() {
 			select {
 			case topic := <-OfflineTopicCleanProcessor:
 				Log.Debugc(func() string {
-					return fmt.Sprintf("clean offlie topic queue: %s", topic)
+					return fmt.Sprintf("clean offline topic queue: %s", topic)
 				})
 
 				OfflineTopicRWmux.RLock()
