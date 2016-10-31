@@ -84,7 +84,7 @@ func (this *service) processor() {
 		this.stop()
 
 		Log.Debugc(func() string {
-			return fmt.Sprintf("(%s) Stopping processor", this.cid())
+			return fmt.Sprintf("(%s) Stopped processor", this.cid())
 		})
 	}()
 
@@ -94,9 +94,7 @@ func (this *service) processor() {
 		// 1. Find out what message is next and the size of the message
 		p, ok := this.in.ReadBuffer()
 		if !ok {
-			Log.Debugc(func() string {
-				return fmt.Sprintf("(%s) suddenly disconnect.", this.cid())
-			})
+			Log.Debugc(func() string { return fmt.Sprintf("(%s) suddenly disconnect.", this.cid()) })
 			return
 		}
 		mtype := message.MessageType((*p)[0] >> 4)
