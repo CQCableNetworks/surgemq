@@ -233,12 +233,17 @@ func (this *service) stop() {
 			}
 		}
 
+		Log.Debugc(func() string { return fmt.Sprintf("(%s) unsubscribe topic.", this.cid()) })
+
 	}
 
 	doit := atomic.CompareAndSwapInt64(&this.closed, 0, 1)
 	if !doit {
 		return
 	}
+
+	this.in.Close()
+	this.out.Close()
 
 	// Close quit channel, effectively telling all the goroutines it's time to quit
 	if this.done != nil {
@@ -255,9 +260,6 @@ func (this *service) stop() {
 
 	// Wait for all the goroutines to stop.
 	this.wgStopped.Wait()
-
-	this.in.Close()
-	this.out.Close()
 
 	Log.Debugc(func() string {
 		return fmt.Sprintf("(%s) Received %d bytes in %d messages.", this.cid(), this.inStat.bytes, this.inStat.msgs)
