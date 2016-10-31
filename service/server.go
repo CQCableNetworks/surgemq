@@ -239,7 +239,7 @@ func (this *Server) ListenAndServe() error {
 			for {
 				conn, err := this.ssl_ln.Accept()
 				Log.Debugc(func() string {
-					return "accepted ssl connection."
+					return fmt.Sprintf("accepted ssl connection from %s", conn.RemoteAddr())
 				})
 				if err != nil {
 					// Borrowed from go1.3.3/src/pkg/net/http/server.go:1699
@@ -287,7 +287,7 @@ func (this *Server) ListenAndServe() error {
 			for {
 				conn, err := this.ln.Accept()
 				Log.Debugc(func() string {
-					return "accepted tcp connection."
+					return fmt.Sprintf("accepted tcp connection from %s", conn.RemoteAddr())
 				})
 
 				if err != nil {

@@ -211,6 +211,9 @@ func (this *service) stop() {
 		}
 	}()
 
+	// Wait for all the goroutines to stop.
+	this.wgStopped.Wait()
+
 	online, lasttime, conn := GetOnlineStatus(this.sess.ID())
 	if conn == &(this.conn) {
 		Log.Infoc(func() string {
@@ -240,9 +243,6 @@ func (this *service) stop() {
 
 	this.in.Close()
 	this.out.Close()
-
-	// Wait for all the goroutines to stop.
-	this.wgStopped.Wait()
 
 	Log.Debugc(func() string {
 		return fmt.Sprintf("(%s) Received %d bytes in %d messages.", this.cid(), this.inStat.bytes, this.inStat.msgs)
