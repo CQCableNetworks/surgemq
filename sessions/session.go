@@ -116,41 +116,41 @@ func (this *Session) Init(msg *message.ConnectMessage) error {
 	return nil
 }
 
-func (this *Session) Update(msg *message.ConnectMessage) error {
-	this.mu.Lock()
-	defer this.mu.Unlock()
+// func (this *Session) Update(msg *message.ConnectMessage) error {
+//   this.mu.Lock()
+//   defer this.mu.Unlock()
 
-	this.cbuf = make([]byte, msg.Len())
-	this.Cmsg = message.NewConnectMessage()
+//   this.cbuf = make([]byte, msg.Len())
+//   this.Cmsg = message.NewConnectMessage()
 
-	if _, err := msg.Encode(this.cbuf); err != nil {
-		return err
-	}
+//   if _, err := msg.Encode(this.cbuf); err != nil {
+//     return err
+//   }
 
-	if _, err := this.Cmsg.Decode(this.cbuf); err != nil {
-		return err
-	}
+//   if _, err := this.Cmsg.Decode(this.cbuf); err != nil {
+//     return err
+//   }
 
-	return nil
-}
+//   return nil
+// }
 
-func (this *Session) RetainMessage(msg *message.PublishMessage) error {
-	this.mu.Lock()
-	defer this.mu.Unlock()
+// func (this *Session) RetainMessage(msg *message.PublishMessage) error {
+//   this.mu.Lock()
+//   defer this.mu.Unlock()
 
-	this.rbuf = make([]byte, msg.Len())
-	this.Retained = message.NewPublishMessage()
+//   this.rbuf = make([]byte, msg.Len())
+//   this.Retained = message.NewPublishMessage()
 
-	if _, err := msg.Encode(this.rbuf); err != nil {
-		return err
-	}
+//   if _, err := msg.Encode(this.rbuf); err != nil {
+//     return err
+//   }
 
-	if _, err := this.Retained.Decode(this.rbuf); err != nil {
-		return err
-	}
+//   if _, err := this.Retained.Decode(this.rbuf); err != nil {
+//     return err
+//   }
 
-	return nil
-}
+//   return nil
+// }
 
 func (this *Session) AddTopic(topic string, qos byte) error {
 	this.mu.Lock()
@@ -197,4 +197,19 @@ func (this *Session) Topics() ([]string, []byte, error) {
 
 func (this *Session) ID() string {
 	return string(this.Cmsg.ClientId())
+}
+
+func (this *Session) DestroyAckQueue() {
+	this.Pub1ack = nil
+	this.Pub2in = nil
+	this.Pub2out = nil
+	this.Suback = nil
+	this.Unsuback = nil
+	this.Pingack = nil
+	this.cbuf = nil
+	this.rbuf = nil
+	this.topics = nil
+	this.Cmsg = nil
+	this.Will = nil
+	this.Retained = nil
 }

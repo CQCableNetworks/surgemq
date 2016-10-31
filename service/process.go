@@ -81,11 +81,11 @@ func (this *service) processor() {
 		}
 
 		this.wgStopped.Done()
-		this.stop()
 
 		Log.Debugc(func() string {
-			return fmt.Sprintf("(%s) Stopped processor", this.cid())
+			return fmt.Sprintf("(%s) Stopping processor", this.cid())
 		})
+		this.stop()
 	}()
 
 	this.wgStarted.Done()
@@ -158,8 +158,8 @@ func (this *service) processIncoming(msg message.Message) error {
 		// For PUBACK message, it means QoS 1, we should send to ack queue
 		//     Log.Errorc(func() string{ return fmt.Sprintf("\n%T:%d==========\nmsg is %v\n=====================", *msg, msg.PacketId(), *msg)})
 		go processAck(msg.PacketId(), this)
-		this.sess.Pub1ack.Ack(msg)
-		this.processAcked(this.sess.Pub1ack)
+		//     this.sess.Pub1ack.Ack(msg)
+		//     this.processAcked(this.sess.Pub1ack)
 
 	case *message.PubrecMessage:
 		// For PUBREC message, it means QoS 2, we should send to ack queue, and send back PUBREL

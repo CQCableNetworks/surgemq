@@ -282,7 +282,9 @@ func (this *service) stop() {
 	}
 
 	// 无视clean session标记，永远清除session
+	//   this.sess.Close()
 	this.sessMgr.Del(this.sess.ID())
+	this.sess.DestroyAckQueue()
 
 	this.conn = nil
 	this.in = nil

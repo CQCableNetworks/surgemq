@@ -658,15 +658,15 @@ func (this *Server) getSession(svc *service, req *message.ConnectMessage, resp *
 
 	// If CleanSession is NOT set, check the session store for existing session.
 	// If found, return it.
-	if !req.CleanSession() {
-		if svc.sess, err = this.sessMgr.Get(cid); err == nil {
-			resp.SetSessionPresent(true)
-
-			if err := svc.sess.Update(req); err != nil {
-				return err
-			}
-		}
-	}
+	// if !req.CleanSession() {
+	// 	if svc.sess, err = this.sessMgr.Get(cid); err == nil {
+	// 		resp.SetSessionPresent(true)
+	//
+	// 		if err := svc.sess.Update(req); err != nil {
+	// 			return err
+	// 		}
+	// 	}
+	// }
 
 	//   this.sessMgr.Del(cid)
 

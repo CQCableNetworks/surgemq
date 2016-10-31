@@ -48,9 +48,8 @@ func (this *service) receiver() {
 			Log.Errorc(func() string { return fmt.Sprintf("(%s) Recovering from panic: %v", this.cid(), r) })
 		}
 
+		Log.Debugc(func() string { return fmt.Sprintf("(%s) Stopping receiver", this.cid()) })
 		this.wgStopped.Done()
-
-		Log.Debugc(func() string { return fmt.Sprintf("(%s) Stopped receiver", this.cid()) })
 	}()
 
 	//   Log.Debugc(func() string{ return fmt.Sprintf("(%s) Starting receiver", this.cid())})
@@ -95,7 +94,7 @@ func (this *service) sender() {
 
 		this.wgStopped.Done()
 
-		Log.Debugc(func() string { return fmt.Sprintf("(%s) Stopped sender", this.cid()) })
+		Log.Debugc(func() string { return fmt.Sprintf("(%s) Stopping sender", this.cid()) })
 	}()
 
 	//   Log.Debugc(func() string{ return fmt.Sprintf("(%s) Starting sender", this.cid())})
