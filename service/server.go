@@ -241,7 +241,13 @@ func (this *Server) ListenAndServe() error {
 				atomic_id := atomic.AddUint64(&gsvcid, 1)
 
 				Log.Debugc(func() string {
-					return fmt.Sprintf("(%d/_) accepted ssl connection from %s", atomic_id, conn.RemoteAddr())
+					var raddr string
+					if conn == nil {
+						raddr = "client but the conn is already Destroyed."
+					} else {
+						raddr = conn.RemoteAddr().String()
+					}
+					return fmt.Sprintf("(%d/_) accepted ssl connection from %s", atomic_id, raddr)
 				})
 				if err != nil {
 					// Borrowed from go1.3.3/src/pkg/net/http/server.go:1699
@@ -291,7 +297,13 @@ func (this *Server) ListenAndServe() error {
 				atomic_id := atomic.AddUint64(&gsvcid, 1)
 
 				Log.Debugc(func() string {
-					return fmt.Sprintf("(%d/_) accepted tcp connection from %s", atomic_id, conn.RemoteAddr())
+					var raddr string
+					if conn == nil {
+						raddr = "client but the conn is already Destroyed."
+					} else {
+						raddr = conn.RemoteAddr().String()
+					}
+					return fmt.Sprintf("(%d/_) accepted tcp connection from %s", atomic_id, raddr)
 				})
 
 				if err != nil {
@@ -342,7 +354,13 @@ func (this *Server) ListenAndServe() error {
 				atomic_id := atomic.AddUint64(&gsvcid, 1)
 
 				Log.Debugc(func() string {
-					return fmt.Sprintf("(%d/_) accepted japn_compatibility connection from %s", atomic_id, conn.RemoteAddr())
+					var raddr string
+					if conn == nil {
+						raddr = "client but the conn is already Destroyed."
+					} else {
+						raddr = conn.RemoteAddr().String()
+					}
+					return fmt.Sprintf("(%d/_) accepted japn_compatibility connection from %s", atomic_id, raddr)
 				})
 
 				if err != nil {
