@@ -211,9 +211,6 @@ func (this *service) stop() {
 		}
 	}()
 
-	// Wait for all the goroutines to stop.
-	this.wgStopped.Wait()
-
 	online, lasttime, conn := GetOnlineStatus(this.sess.ID())
 	if conn == &(this.conn) {
 		Log.Infoc(func() string {
@@ -221,6 +218,21 @@ func (this *service) stop() {
 		})
 
 		SetOnlineStatus(this.sess.ID(), false, time.Now(), &(this.conn))
+
+		// Unsubscribe from all the topics for this client, only for the server side though
+		if !this.client && this.sess != nil {
+			topics, _, err := this.sess.Topics()
+			if err != nil {
+				Log.Errorc(func() string { return fmt.Sprintf("(%s/%d): %v", this.cid(), this.id, err) })
+			} else {
+				for _, t := range topics {
+					if err := this.topicsMgr.Unsubscribe([]byte(t), &this.onpub); err != nil {
+						Log.Errorc(func() string { return fmt.Sprintf("(%s): Error unsubscribing topic %q: %v", this.cid(), t, err) })
+					}
+				}
+			}
+		}
+
 	}
 
 	doit := atomic.CompareAndSwapInt64(&this.closed, 0, 1)
@@ -241,6 +253,9 @@ func (this *service) stop() {
 		//     ClientMapCleanProcessor <- this.sess.ID()
 	}
 
+	// Wait for all the goroutines to stop.
+	this.wgStopped.Wait()
+
 	this.in.Close()
 	this.out.Close()
 
@@ -250,20 +265,6 @@ func (this *service) stop() {
 	Log.Debugc(func() string {
 		return fmt.Sprintf("(%s) Sent %d bytes in %d messages.", this.cid(), this.outStat.bytes, this.outStat.msgs)
 	})
-
-	// Unsubscribe from all the topics for this client, only for the server side though
-	if !this.client && this.sess != nil {
-		topics, _, err := this.sess.Topics()
-		if err != nil {
-			Log.Errorc(func() string { return fmt.Sprintf("(%s/%d): %v", this.cid(), this.id, err) })
-		} else {
-			for _, t := range topics {
-				if err := this.topicsMgr.Unsubscribe([]byte(t), &this.onpub); err != nil {
-					Log.Errorc(func() string { return fmt.Sprintf("(%s): Error unsubscribing topic %q: %v", this.cid(), t, err) })
-				}
-			}
-		}
-	}
 
 	// Publish will message if WillFlag is set. Server side only.
 	//   if !this.client && this.sess.Cmsg.WillFlag() {
