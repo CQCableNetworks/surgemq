@@ -238,8 +238,10 @@ func (this *Server) ListenAndServe() error {
 
 			for {
 				conn, err := this.ssl_ln.Accept()
+				atomic_id := atomic.AddUint64(&gsvcid, 1)
+
 				Log.Debugc(func() string {
-					return fmt.Sprintf("accepted ssl connection from %s", conn.RemoteAddr())
+					return fmt.Sprintf("(%d/_) accepted ssl connection from %s", atomic_id, conn.RemoteAddr())
 				})
 				if err != nil {
 					// Borrowed from go1.3.3/src/pkg/net/http/server.go:1699
@@ -252,19 +254,19 @@ func (this *Server) ListenAndServe() error {
 						if max := 1 * time.Second; tempDelay > max {
 							tempDelay = max
 						}
-						Log.Error("server/ListenAndServe: Accept ssl error: %v; retrying in %v", err, tempDelay)
+						Log.Error("(%d/_) server/ListenAndServe: Accept ssl error: %v; retrying in %v", atomic_id, err, tempDelay)
 						time.Sleep(tempDelay)
 						continue
 					} else {
 						Log.Errorc(func() string {
-							return fmt.Sprintf("ssl connection error: %s", err)
+							return fmt.Sprintf("(%d/_) ssl connection error: %s", atomic_id, err)
 						})
 					}
 
 					return
 				}
 
-				go this.handleConnection(conn)
+				go this.handleConnection(conn, atomic_id)
 			}
 		}()
 	}
@@ -286,8 +288,10 @@ func (this *Server) ListenAndServe() error {
 
 			for {
 				conn, err := this.ln.Accept()
+				atomic_id := atomic.AddUint64(&gsvcid, 1)
+
 				Log.Debugc(func() string {
-					return fmt.Sprintf("accepted tcp connection from %s", conn.RemoteAddr())
+					return fmt.Sprintf("(%d/_) accepted tcp connection from %s", atomic_id, conn.RemoteAddr())
 				})
 
 				if err != nil {
@@ -301,18 +305,18 @@ func (this *Server) ListenAndServe() error {
 						if max := 1 * time.Second; tempDelay > max {
 							tempDelay = max
 						}
-						Log.Error("server/ListenAndServe: Accept error: %v; retrying in %v", err, tempDelay)
+						Log.Error("(%d/_) server/ListenAndServe: Accept error: %v; retrying in %v", atomic_id, err, tempDelay)
 						time.Sleep(tempDelay)
 						continue
 					} else {
 						Log.Errorc(func() string {
-							return fmt.Sprintf("tcp connection error: %s", err)
+							return fmt.Sprintf("(%d/_) tcp connection error: %s", atomic_id, err)
 						})
 					}
 					return
 				}
 
-				go this.handleConnection(conn)
+				go this.handleConnection(conn, atomic_id)
 			}
 		}()
 
@@ -335,6 +339,11 @@ func (this *Server) ListenAndServe() error {
 
 			for {
 				conn, err := this.japn_ln.Accept()
+				atomic_id := atomic.AddUint64(&gsvcid, 1)
+
+				Log.Debugc(func() string {
+					return fmt.Sprintf("(%d/_) accepted japn_compatibility connection from %s", atomic_id, conn.RemoteAddr())
+				})
 
 				if err != nil {
 					// Borrowed from go1.3.3/src/pkg/net/http/server.go:1699
@@ -347,14 +356,14 @@ func (this *Server) ListenAndServe() error {
 						if max := 1 * time.Second; tempDelay > max {
 							tempDelay = max
 						}
-						Log.Error("server/ListenAndServe: Accept error: %v; retrying in %v", err, tempDelay)
+						Log.Error("(%d/_) server/ListenAndServe: Accept error: %v; retrying in %v", atomic_id, err, tempDelay)
 						time.Sleep(tempDelay)
 						continue
 					}
 					return
 				}
 
-				go this.handleConnection(conn)
+				go this.handleConnection(conn, atomic_id)
 			}
 		}()
 
@@ -441,7 +450,7 @@ func (this *Server) Close() error {
 }
 
 // HandleConnection is for the broker to handle an incoming connection from a client
-func (this *Server) handleConnection(c io.Closer) (err error) {
+func (this *Server) handleConnection(c io.Closer, atomic_id uint64) (err error) {
 	if c == nil {
 		return ErrInvalidConnectionType
 	}
@@ -508,7 +517,7 @@ func (this *Server) handleConnection(c io.Closer) (err error) {
 	}
 
 	svc := &service{
-		id:     atomic.AddUint64(&gsvcid, 1),
+		id:     atomic_id,
 		client: false,
 
 		keepAlive:      int(req.KeepAlive()),
